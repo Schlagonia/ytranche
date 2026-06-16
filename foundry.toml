@@ -1,0 +1,20 @@
+[profile.default]
+src = 'src'
+script = 'script'
+out = 'out'
+libs = ['lib']
+solc = "0.8.23"
+optimizer = true
+optimizer_runs = 200
+ffi = true
+fs_permissions = [{ access = "read", path = "./" }]
+
+remappings = [
+    "@openzeppelin/=lib/openzeppelin-contracts/",
+    "forge-std/=lib/forge-std/src/",
+    "@tokenized-strategy/=lib/tokenized-strategy/src/",
+    "@periphery/=lib/tokenized-strategy-periphery/src/",
+    "@yearn-vaults/=lib/yearn-vaults-v3/contracts/"
+]
+
+# See more config options https://github.com/foundry-rs/foundry/tree/master/config
