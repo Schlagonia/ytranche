@@ -25,7 +25,7 @@ contract ForkPatchTest is Setup {
         assertEq(ITrancheStrategy(address(aTranche)).totalAssets(), 70e18);
 
         // Let a full year of A accrual pass. The controller's live NAV grows,
-        // but the tranche's stored baseline has not synced yet.
+        // but the Tranche's stored baseline has not synced yet.
         skip(YEAR);
 
         uint256 storedBefore = ITrancheStrategy(address(aTranche)).lastTotalAssets();

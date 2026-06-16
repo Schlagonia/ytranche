@@ -23,7 +23,7 @@ contract TrancheBasicTest is Setup {
 
     /// @dev During an unrealised vault loss a user can still exit (loss-taking
     ///      cap), redeeming the realisable amount and bearing the loss itself;
-    ///      the reserve and other tranches are untouched.
+    ///      the reserve and other Tranches are untouched.
     function test_withdraw_passesRedeemLossToUser() public {
         _depositA(alice, 100e18);
         _fundReserve(10e18);
@@ -47,14 +47,14 @@ contract TrancheBasicTest is Setup {
         assertApproxEqAbs(controller.reserveAssets(), 10e18, 1e15, "reserve untouched by redemption loss");
     }
 
-    /// @dev A donation (stray idle) on the tranche strategy must not cause the
+    /// @dev A donation (stray idle) on the Tranche strategy must not cause the
     ///      controller to under-deliver a withdrawal — `_amount` already arrives
     ///      net of idle, so the controller must not subtract it again.
     function test_donationToTranche_doesNotUnderfundWithdrawal() public {
         uint256 amt = 70e18;
         _depositA(alice, amt);
 
-        // Donate stray idle to the tranche strategy. Not counted in NAV
+        // Donate stray idle to the Tranche strategy. Not counted in NAV
         // (totalAssets is baseline-driven), so it doesn't change PPS.
         _airdrop(address(aTranche), 1e18);
 
@@ -104,7 +104,7 @@ contract TrancheBasicTest is Setup {
         vm.prank(alice);
         ITrancheStrategy(address(bTranche)).redeem(maxShares, alice, alice);
 
-        // User received ~principal; the small accrued remainder stays in the tranche.
+        // User received ~principal; the small accrued remainder stays in the Tranche.
         uint256 received = asset.balanceOf(alice);
         assertApproxEqAbs(received, amt, 1e15, "received ~ principal (vault deliverable)");
     }
@@ -112,7 +112,7 @@ contract TrancheBasicTest is Setup {
     function test_mainVault_directDepositAllowed() public {
         // The main vault is opened in Setup, so anyone may deposit directly
         // (identity is not checked once open). A self-receiver deposit does not
-        // touch controller/tranche accounting.
+        // touch controller/Tranche accounting.
         _airdrop(alice, 10e18);
         vm.startPrank(alice);
         asset.approve(address(mainVault), 10e18);

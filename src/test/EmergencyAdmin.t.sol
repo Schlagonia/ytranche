@@ -95,7 +95,7 @@ contract EmergencyAdminTest is Setup {
         vm.expectRevert(bytes("not paused or shutdown"));
         emergencyAdmin.emergencyWithdraw(address(aTranche), 1e18);
 
-        // After pausing the strategy it succeeds (a no-op for tranches today).
+        // After pausing the strategy it succeeds (a no-op for Tranches today).
         vm.startPrank(carol);
         emergencyAdmin.pauseVault(address(aTranche));
         emergencyAdmin.emergencyWithdraw(address(aTranche), 1e18);

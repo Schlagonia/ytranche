@@ -27,7 +27,7 @@ contract IllustrationTest is Setup {
         skip(YEAR);
         _simulateRiskyPnL(pnl);
         _settle();
-        // Excess is pending after settle — realized at each tranche's report.
+        // Excess is pending after settle — realized at each Tranche's report.
         _reportTranches();
     }
 

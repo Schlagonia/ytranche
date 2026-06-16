@@ -6,35 +6,35 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 
 import {IVault} from "@yearn-vaults/interfaces/IVault.sol";
-import {Authorized} from "./utils/Authorized.sol";
+import {Authorized} from "./periphery/Authorized.sol";
 
 /**
  * @title TrancheController
  * @author ytranche
  * @notice
- *  Economic source of truth for the tranche system. Every tranche shares
+ *  Economic source of truth for the Tranche system. Every Tranche shares
  *  the same `Tranche` struct — a target rate, an excess-share BPS, a
  *  baseline-assets accumulator, an accrual checkpoint, and a frozen flag.
- *  The struct is keyed by the tranche strategy's address; the controller
+ *  The struct is keyed by the Tranche strategy's address; the controller
  *  has no A/B/E specialised surface.
  *
  *  Tranches register themselves into the system via `registerTranche`,
  *  which appends them to `tranchesByPriority`. Index `0` is the most
- *  senior tranche. Settlement walks the list in priority order to fund
- *  per-tranche targets, then in reverse to absorb losses (junior first,
+ *  senior Tranche. Settlement walks the list in priority order to fund
+ *  per-Tranche targets, then in reverse to absorb losses (junior first,
  *  senior last).
  *
  *  Reserve is mandatory and lives in any same-asset 4626 vault. Reserve
- *  absorbs loss before any tranche baseline (unrealised pending excess
+ *  absorbs loss before any Tranche baseline (unrealised pending excess
  *  is clawed back even earlier).
  *
  *  Excess profit recorded at settlement is NOT immediately reflected in
- *  a tranche's live NAV — it sits in `pendingExcess` until the tranche
+ *  a Tranche's live NAV — it sits in `pendingExcess` until the Tranche
  *  strategy calls {realizeExcess} during its `report()`, letting the
  *  strategy lock the chunky profit over its unlock period.
  *
- *  Defaults at deployment: no tranches registered. Governance calls
- *  `registerTranche` once per tranche, supplying its target rate and
+ *  Defaults at deployment: no Tranches registered. Governance calls
+ *  `registerTranche` once per Tranche, supplying its target rate and
  *  excess-share BPS up-front.
  */
 contract TrancheController is Authorized {
@@ -62,8 +62,8 @@ contract TrancheController is Authorized {
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Configuration + live state for a single tranche.
-     * @param registered             Set to `true` when the tranche is bound.
+     * @notice Configuration + live state for a single Tranche.
+     * @param registered             Set to `true` when the Tranche is bound.
      * @param frozen                 When true, target accrual is paused.
      * @param excessShareBps         BPS share of post-target excess profit.
      * @param targetRatePerSecondWad Continuous per-second target rate (WAD).
@@ -71,7 +71,7 @@ contract TrancheController is Authorized {
      * @param lastAccrual            Timestamp of the last baseline accrual.
      * @param pendingExcess          Excess profit recorded at settlement but
      *                               not yet realised into `baselineAssets`.
-     *                               Excluded from live NAV until the tranche
+     *                               Excluded from live NAV until the Tranche
      *                               calls {realizeExcess} during `report()`.
      */
     struct Tranche {
@@ -126,7 +126,7 @@ contract TrancheController is Authorized {
      */
     address[] public tranchesByPriority;
 
-    /// @notice Per-tranche config + live state, keyed by tranche address.
+    /// @notice Per-Tranche config + live state, keyed by Tranche address.
     mapping(address => Tranche) public tranches;
 
     /*//////////////////////////////////////////////////////////////
@@ -136,7 +136,7 @@ contract TrancheController is Authorized {
     /**
      * @notice Deploy a fresh controller. Tranches are not bound at
      *         construction — governance calls `registerTranche` once per
-     *         tranche after deployment (the tranche strategies themselves
+     *         Tranche after deployment (the Tranche strategies themselves
      *         require this controller's address in their constructor). The
      *         reserve vault is set afterwards via {setReserveVault}.
      */
@@ -157,7 +157,7 @@ contract TrancheController is Authorized {
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Register a tranche as the new most-junior tranche (appended to
+     * @notice Register a Tranche as the new most-junior Tranche (appended to
      *         the end of the priority list). Index `0` is the most senior.
      * @param _tranche         Tranche strategy address.
      * @param _targetBps       Annualised target rate in basis points.
@@ -171,12 +171,12 @@ contract TrancheController is Authorized {
     }
 
     /**
-     * @notice Register a tranche at a specific priority `_index`, shifting every
-     *         tranche at or after that index one rung more junior. Use this to
-     *         slot a new tranche into the middle of the order. `_index` equal to
+     * @notice Register a Tranche at a specific priority `_index`, shifting every
+     *         Tranche at or after that index one rung more junior. Use this to
+     *         slot a new Tranche into the middle of the order. `_index` equal to
      *         the current length appends (same as {registerTranche}).
-     * @dev    Existing tranches keep all of their state — only the ordering
-     *         changes. There is no removal: to retire a tranche, zero its target
+     * @dev    Existing Tranches keep all of their state — only the ordering
+     *         changes. There is no removal: to retire a Tranche, zero its target
      *         rate and excess share (it then stops accruing/earning but stays in
      *         the waterfall so holders can still wind down).
      */
@@ -231,7 +231,7 @@ contract TrancheController is Authorized {
         emit ReserveVaultSet(_newReserveVault);
     }
 
-    /// @notice Set a tranche's annualised target rate in basis points.
+    /// @notice Set a Tranche's annualised target rate in basis points.
     /// @dev Accrues against the old rate first.
     function setTrancheTargetBps(address _tranche, uint16 _newBps) external isAuthorized(GOVERNANCE_ROLE) {
         Tranche storage tranche = tranches[_tranche];
@@ -243,7 +243,7 @@ contract TrancheController is Authorized {
         emit TrancheTargetRateSet(_tranche, tranche.targetRatePerSecondWad);
     }
 
-    /// @notice Set a tranche's excess-share in basis points.
+    /// @notice Set a Tranche's excess-share in basis points.
     function setTrancheExcessShareBps(address _tranche, uint16 _newBps) external isAuthorized(GOVERNANCE_ROLE) {
         Tranche storage tranche = tranches[_tranche];
         require(tranche.registered, "!tranche");
@@ -254,7 +254,7 @@ contract TrancheController is Authorized {
         emit TrancheExcessShareSet(_tranche, _newBps);
     }
 
-    /// @notice Clear a tranche's accrual-frozen flag.
+    /// @notice Clear a Tranche's accrual-frozen flag.
     function unfreeze(address _tranche) external isAuthorized(MANAGEMENT_ROLE) {
         Tranche storage tranche = tranches[_tranche];
         require(tranche.registered, "!tranche");
@@ -294,7 +294,7 @@ contract TrancheController is Authorized {
                               LIVE NAV VIEW
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Live NAV for a tranche — its NAV source. Reverts if the tranche
+    /// @notice Live NAV for a Tranche — its NAV source. Reverts if the Tranche
     ///         is not registered.
     function liveAssets(address _tranche) external view returns (uint256) {
         Tranche memory tranche = tranches[_tranche];
@@ -306,14 +306,14 @@ contract TrancheController is Authorized {
         return tranches[_tranche].frozen;
     }
 
-    /// @notice Whether `_tranche` is a registered tranche. Consulted by the
-    ///         Hook to gate per-tranche rate-limit consumption.
+    /// @notice Whether `_tranche` is a registered Tranche. Consulted by the
+    ///         Hook to gate per-Tranche rate-limit consumption.
     function isTranche(address _tranche) external view returns (bool) {
         return tranches[_tranche].registered;
     }
 
     /// @notice Excess recorded at settlement awaiting realisation via
-    ///         {realizeExcess}. Not part of the tranche's live NAV.
+    ///         {realizeExcess}. Not part of the Tranche's live NAV.
     function pendingExcess(address _tranche) external view returns (uint256) {
         return tranches[_tranche].pendingExcess;
     }
@@ -337,7 +337,7 @@ contract TrancheController is Authorized {
         return VAULT.maxWithdraw(address(this), MAX_BPS);
     }
 
-    /// @notice Number of registered tranches.
+    /// @notice Number of registered Tranches.
     function tranchesLength() external view returns (uint256) {
         return tranchesByPriority.length;
     }
@@ -350,7 +350,7 @@ contract TrancheController is Authorized {
         return vaultAssets() + reserveAssets() >= totalClaims();
     }
 
-    /// @notice Sum of every tranche's current claim — live NAV plus unrealised
+    /// @notice Sum of every Tranche's current claim — live NAV plus unrealised
     ///         pending excess. This is the figure `settle` measures the main
     ///         vault against to compute PnL.
     function totalClaims() public view returns (uint256 total) {
@@ -366,35 +366,35 @@ contract TrancheController is Authorized {
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Pull `_amount` underlying from the calling tranche and
+     * @notice Pull `_amount` underlying from the calling Tranche and
      *         route it into the main risky vault.
      */
     function depositFromTranche(uint256 _amount) external onlyTranche {
         if (_amount == 0) return;
 
-        // Roll the tranche's baseline forward, then credit the new principal.
+        // Roll the Tranche's baseline forward, then credit the new principal.
         Tranche storage tranche = tranches[msg.sender];
         _accrue(tranche);
         tranche.baselineAssets += _amount;
 
-        // Pull the underlying from the tranche and route it into the main vault.
+        // Pull the underlying from the Tranche and route it into the main vault.
         ASSET.safeTransferFrom(msg.sender, address(this), _amount);
         VAULT.deposit(_amount, address(this));
     }
 
     /**
-     * @notice Source `_amount` underlying for the calling tranche from the main
+     * @notice Source `_amount` underlying for the calling Tranche from the main
      *         vault. The full claim (`_amount`) is debited from the baseline,
      *         but only the assets the vault actually delivers are handed back —
      *         so a redemption that realises a vault loss passes that loss
-     *         through to the withdrawing tranche/user (booked against them by
+     *         through to the withdrawing Tranche/user (booked against them by
      *         the TokenizedStrategy per the redeemer's `maxLoss`). The reserve
      *         is a settlement-time backstop only, never a redemption source.
      */
     function withdrawFromTranche(uint256 _amount) external onlyTranche {
         if (_amount == 0) return;
 
-        // Roll the tranche's baseline forward. A tranche can never source more
+        // Roll the Tranche's baseline forward. A Tranche can never source more
         // than its own claim, so cap the withdrawal to its baseline and debit it.
         Tranche storage tranche = tranches[msg.sender];
         _accrue(tranche);
@@ -418,8 +418,8 @@ contract TrancheController is Authorized {
     }
 
     /**
-     * @notice Realise the calling tranche's pending excess into its
-     *         baseline. Called by the tranche during `report()` so the
+     * @notice Realise the calling Tranche's pending excess into its
+     *         baseline. Called by the Tranche during `report()` so the
      *         chunky settlement profit is recorded — and locked over the
      *         strategy's profit-unlock period — instead of surfacing
      *         immediately in `totalAssets`.
@@ -443,27 +443,27 @@ contract TrancheController is Authorized {
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Apply the tranche waterfall.
+     * @notice Apply the Tranche waterfall.
      *
-     *   1. Accrue every tranche.
-     *   2. pnl = vaultAssets() − Σ (tranche.baselineAssets + tranche.pendingExcess)
+     *   1. Accrue every Tranche.
+     *   2. pnl = vaultAssets() − Σ (Tranche.baselineAssets + Tranche.pendingExcess)
      *   3. Profit path — a strictly profitable settle auto-unfreezes any
-     *      tranche frozen by an earlier loss, then records the surplus by
-     *      each tranche's `excessShareBps` as `pendingExcess`. It does NOT
-     *      enter live NAV until the tranche realises it via {realizeExcess}
+     *      Tranche frozen by an earlier loss, then records the surplus by
+     *      each Tranche's `excessShareBps` as `pendingExcess`. It does NOT
+     *      enter live NAV until the Tranche realises it via {realizeExcess}
      *      during its `report()`, so the strategy can lock the chunky
      *      profit. Any remainder (sum < MAX_BPS) stays in the main vault.
-     *   4. Loss path — the reserve absorbs first, then each tranche in
+     *   4. Loss path — the reserve absorbs first, then each Tranche in
      *      REVERSE priority (junior first) absorbs from its total claim:
      *      pending excess first, then baseline. Any loss — pending or
-     *      baseline — freezes the tranche and emits one combined
+     *      baseline — freezes the Tranche and emits one combined
      *      {TrancheLoss}. Pending excess is treated as part of the claim, so
      *      the loss order is constant regardless of unrealised excess.
      */
     function settle() external isAuthorized(KEEPER_ROLE) {
         uint256 numberOfTranches = tranchesByPriority.length;
 
-        // 1. Accrue every tranche and total up the system's claim:
+        // 1. Accrue every Tranche and total up the system's claim:
         //    Σ (baselineAssets + pendingExcess).
         uint256 totalClaim;
         for (uint256 i = 0; i < numberOfTranches; ++i) {
@@ -485,15 +485,15 @@ contract TrancheController is Authorized {
 
                 // A strictly profitable settle means the vault is earning
                 // beyond every live target again — resume accrual for any
-                // tranche frozen by an earlier loss. `lastAccrual` was just
+                // Tranche frozen by an earlier loss. `lastAccrual` was just
                 // checkpointed in the accrual loop above.
                 if (tranche.frozen) {
                     tranche.frozen = false;
                     emit TrancheFrozenSet(trancheAddress, false);
                 }
 
-                // Record this tranche's slice of the excess as pending — it
-                // enters live NAV only when the tranche calls {realizeExcess}.
+                // Record this Tranche's slice of the excess as pending — it
+                // enters live NAV only when the Tranche calls {realizeExcess}.
                 uint256 share = (excess * tranche.excessShareBps) / MAX_BPS;
                 if (share > 0) {
                     tranche.pendingExcess += share;
@@ -515,12 +515,12 @@ contract TrancheController is Authorized {
                 loss -= fromReserve;
             }
 
-            // 4b. Then tranches in REVERSE priority (junior first). Each tranche
+            // 4b. Then Tranches in REVERSE priority (junior first). Each Tranche
             //     absorbs from its total claim — pending excess first (earned-
             //     but-unrealised yield), then baseline. Pending excess is part
             //     of the claim, so the loss order is constant regardless of
             //     whether the excess has been realised, and any loss — pending
-            //     or baseline — freezes the tranche.
+            //     or baseline — freezes the Tranche.
             for (uint256 i = numberOfTranches; i > 0; --i) {
                 if (loss == 0) break;
 
@@ -539,7 +539,7 @@ contract TrancheController is Authorized {
                     loss -= fromBaseline;
                 }
 
-                // Any loss to the tranche (pending and/or baseline) freezes it
+                // Any loss to the Tranche (pending and/or baseline) freezes it
                 // and is reported as one combined amount.
                 uint256 absorbed = fromPending + fromBaseline;
                 if (absorbed > 0) {
@@ -584,7 +584,7 @@ contract TrancheController is Authorized {
         _tranche.lastAccrual = block.timestamp;
     }
 
-    /// @dev Sum of `excessShareBps` across all registered tranches except
+    /// @dev Sum of `excessShareBps` across all registered Tranches except
     ///      `_excluded`. Used to validate excess-share updates.
     function _totalExcessShareBpsExcluding(address _excluded) internal view returns (uint256 totalBps) {
         uint256 numberOfTranches = tranchesByPriority.length;

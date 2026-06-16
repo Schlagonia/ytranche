@@ -3,10 +3,10 @@ pragma solidity >=0.8.18;
 
 /**
  * @title IHook
- * @notice Central security/policy contract used by the tranches and wired
+ * @notice Central security/policy contract used by the Tranches and wired
  *         directly as the Yearn V3 main-vault `deposit_hook` /
- *         `withdraw_hook`. Per-tranche state is keyed by the
- *         tranche's address — there is no A/B/E specialised surface.
+ *         `withdraw_hook`. Per-Tranche state is keyed by the
+ *         Tranche's address — there is no A/B/E specialised surface.
  *         Returns *actual* asset caps through `depositCap` / `withdrawCap`
  *         so the strategies can `min` them with their own constraints.
  */

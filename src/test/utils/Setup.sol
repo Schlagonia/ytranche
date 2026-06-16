@@ -8,8 +8,8 @@ import {TrancheStrategy} from "../../TrancheStrategy.sol";
 import {LockedTrancheStrategy} from "../../LockedTrancheStrategy.sol";
 import {TrancheController} from "../../TrancheController.sol";
 import {Hook} from "../../Hook.sol";
-import {Authorizer} from "../../Authorizer.sol";
-import {EmergencyAdmin} from "../../EmergencyAdmin.sol";
+import {Authorizer} from "../../periphery/Authorizer.sol";
+import {EmergencyAdmin} from "../../periphery/EmergencyAdmin.sol";
 
 import {ITrancheStrategy} from "../../interfaces/ITrancheStrategy.sol";
 import {IStrategy} from "@tokenized-strategy/interfaces/IStrategy.sol";
@@ -23,8 +23,8 @@ import {MockReserveVault} from "../mocks/MockReserveVault.sol";
 import {MockStrategy} from "../mocks/MockStrategy.sol";
 import {VyperDeployer} from "../../../lib/yearn-vaults-v3/foundry_tests/utils/VyperDeployer.sol";
 
-/// @notice Shared deployment / wiring for all tranche tests.
-///   Three tranches all built from the same generic mapping-driven
+/// @notice Shared deployment / wiring for all Tranche tests.
+///   Three Tranches all built from the same generic mapping-driven
 ///   controller / hook surface — A, B, E are just three addresses
 ///   registered in priority order.
 contract Setup is Test {
@@ -53,7 +53,7 @@ contract Setup is Test {
     LockedTrancheStrategy public bTranche;
     LockedTrancheStrategy public eTranche;
 
-    // Default per-tranche economic config used by `setUp`.
+    // Default per-Tranche economic config used by `setUp`.
     uint16 internal constant DEFAULT_A_TARGET_BPS = 425; // 4.25 % / yr
     uint16 internal constant DEFAULT_A_EXCESS_BPS = 0;
     uint16 internal constant DEFAULT_B_TARGET_BPS = 425; // 4.25 % / yr
@@ -145,8 +145,8 @@ contract Setup is Test {
         _configureVault(address(eTranche));
         _configureVault(address(mainVault));
 
-        // Open the main vault for direct deposits (per-tranche gating lives on
-        // each tranche, configured in `_configureTranche`).
+        // Open the main vault for direct deposits (per-Tranche gating lives on
+        // each Tranche, configured in `_configureTranche`).
         vm.prank(management);
         hook.setOpen(true);
 
@@ -189,7 +189,7 @@ contract Setup is Test {
     /// @dev Tranche-side setup (this contract is management): unlock time, fees,
     ///      keeper, open its deposit gate, and widen the {BaseHealthCheck} report
     ///      limits so the economic tests can record arbitrary profit / loss.
-    ///      Must run after the tranche is registered (setters trigger accrual).
+    ///      Must run after the Tranche is registered (setters trigger accrual).
     function _configureTranche(address _tranche) internal {
         ITrancheStrategy t = ITrancheStrategy(_tranche);
         t.setProfitMaxUnlockTime(0);
@@ -251,9 +251,9 @@ contract Setup is Test {
         controller.settle();
     }
 
-    /// @dev Report every tranche — realizes any pending excess recorded
-    ///      at settlement into the tranches' baselines. Settlement produces
-    ///      large, *expected* swings (e.g. the equity tranche absorbing the
+    /// @dev Report every Tranche — realizes any pending excess recorded
+    ///      at settlement into the Tranches' baselines. Settlement produces
+    ///      large, *expected* swings (e.g. the equity Tranche absorbing the
     ///      bulk of the excess), so the health check is bypassed for these
     ///      reports just as management would around a settlement.
     function _reportTranches() internal {

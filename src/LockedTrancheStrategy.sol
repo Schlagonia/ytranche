@@ -12,8 +12,8 @@ import {TrancheStrategy} from "./TrancheStrategy.sol";
  * @notice
  *  TrancheStrategy + a redemption cooldown layer modelled on
  *  https://github.com/Schlagonia/locked-yvusd/blob/underlying/src/LockedVault.sol .
- *  Used for any tranche that needs a withdrawal delay (B by default; the
- *  equity tranche E uses the same contract).
+ *  Used for any Tranche that needs a withdrawal delay (B by default; the
+ *  equity Tranche E uses the same contract).
  *
  *  Mechanism:
  *
@@ -80,7 +80,7 @@ contract LockedTrancheStrategy is TrancheStrategy {
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Deploy a fresh locked tranche.
+     * @notice Deploy a fresh locked Tranche.
      * @param _cooldownDuration Initial cooldown duration in seconds (≤ MAX).
      * @param _withdrawalWindow Initial withdrawal window in seconds (≥ MIN).
      */

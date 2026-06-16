@@ -14,9 +14,9 @@ import {IHook} from "./interfaces/IHook.sol";
  * @title TrancheStrategy
  * @author ytranche
  * @notice
- *  Base tranche strategy — atomic deposit & withdraw, no cooldown. Used
- *  directly for the senior tranche (A). The junior (B) and equity (E)
- *  tranches extend this contract via {LockedTrancheStrategy} to add a
+ *  Base Tranche strategy — atomic deposit & withdraw, no cooldown. Used
+ *  directly for the senior Tranche (A). The junior (B) and equity (E)
+ *  Tranches extend this contract via {LockedTrancheStrategy} to add a
  *  cooldown + withdrawal-window layer.
  *
  *  All economics live in `TrancheController`. The Hook contract is the
@@ -25,14 +25,14 @@ import {IHook} from "./interfaces/IHook.sol";
  *  local constraints it has (cooldown availability for the locked variant).
  *
  *  The Hook reference is **settable** by management — governance can rotate
- *  to a new Hook implementation without redeploying the tranche.
+ *  to a new Hook implementation without redeploying the Tranche.
  *
  *  Inherits the periphery {BaseHooks}. Per-flow metering is delegated to the
  *  Hook through the post-deposit / post-withdraw hooks, reusing the very same
- *  `post_deposit` / `post_withdraw` surface the main vault calls. The per-tranche
+ *  `post_deposit` / `post_withdraw` surface the main vault calls. The per-Tranche
  *  open / allow-list gate is the inherited {BaseHealthCheck} one (the Hook only
  *  gates the main vault), and the {BaseHealthCheck} report limits are left
- *  active — management configures them per tranche.
+ *  active — management configures them per Tranche.
  */
 contract TrancheStrategy is BaseHooks {
     using SafeERC20 for IERC20;
@@ -108,13 +108,13 @@ contract TrancheStrategy is BaseHooks {
         return _strategyTotalAssets();
     }
 
-    /// @dev Meter the deposit against this tranche's rolling rate limit through
+    /// @dev Meter the deposit against this Tranche's rolling rate limit through
     ///      the same Hook surface the main vault calls. Runs after shares mint.
     function _postDepositHook(uint256 _assets, uint256 _shares, address _receiver) internal virtual override {
         hook.post_deposit(msg.sender, _receiver, _assets, _shares);
     }
 
-    /// @dev Meter the withdrawal against this tranche's rolling rate limit
+    /// @dev Meter the withdrawal against this Tranche's rolling rate limit
     ///      through the same Hook surface the main vault calls. Runs after the
     ///      shares burn.
     function _postWithdrawHook(uint256 _assets, uint256 _shares, address _receiver, address _owner, uint256 _maxLoss)
@@ -131,7 +131,7 @@ contract TrancheStrategy is BaseHooks {
 
     /**
      * @notice Asset amount that can be deposited right now.
-     * @dev {BaseHealthCheck} gates on this tranche's own open / allow-list; when
+     * @dev {BaseHealthCheck} gates on this Tranche's own open / allow-list; when
      *      it admits the receiver, bound by the Hook's rolling-rate / aggregate
      *      caps (which also fold in the shared main-vault ingress).
      */

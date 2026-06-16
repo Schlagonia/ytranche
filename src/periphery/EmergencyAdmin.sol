@@ -4,12 +4,12 @@ pragma solidity ^0.8.18;
 import {IVault} from "@yearn-vaults/interfaces/IVault.sol";
 import {IStrategy} from "@tokenized-strategy/interfaces/IStrategy.sol";
 
-import {Authorized} from "./utils/Authorized.sol";
+import {Authorized} from "./Authorized.sol";
 
 /**
  * @title EmergencyAdmin
  * @author ytranche
- * @notice Single, central entry point for every emergency halt in the tranche
+ * @notice Single, central entry point for every emergency halt in the Tranche
  *         system. An emergency responder (EMERGENCY_ROLE; governance is the
  *         {Authorizer} superuser) names the target to halt — the contract holds
  *         no addresses of its own, it just drives the underlying Yearn V3

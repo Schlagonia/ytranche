@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {Setup} from "./utils/Setup.sol";
 import {ITrancheStrategy} from "../interfaces/ITrancheStrategy.sol";
 
-/// @notice Invariants for the symmetric A/B/E tranche model.
+/// @notice Invariants for the symmetric A/B/E Tranche model.
 ///   Defaults:
 ///     A target 4.25 %/yr, A excess 0
 ///     B target 4.25 %/yr, B excess 4000  (40 %)
@@ -132,7 +132,7 @@ contract InvariantsTest is Setup {
     }
 
     /// @dev Excess recorded at settle stays pending — out of live NAV —
-    ///      until the tranche realizes it during report().
+    ///      until the Tranche realizes it during report().
     function test_inv_excessPending_untilReport() public {
         _depositA(alice, 70e18);
         _depositB(bob, 20e18);
@@ -166,7 +166,7 @@ contract InvariantsTest is Setup {
         assertEq(controller.pendingExcess(address(eTranche)), ePending, "E pending unchanged");
     }
 
-    /// @dev The reserve absorbs loss before any tranche's pending excess. A
+    /// @dev The reserve absorbs loss before any Tranche's pending excess. A
     ///      loss smaller than the reserve leaves all pending excess and every
     ///      baseline whole.
     function test_inv_loss_eatsReserveBeforePending() public {
@@ -193,8 +193,8 @@ contract InvariantsTest is Setup {
         );
     }
 
-    /// @dev Once the reserve is exhausted, loss spills into tranches in reverse
-    ///      priority, eating each tranche's pending excess before its baseline
+    /// @dev Once the reserve is exhausted, loss spills into Tranches in reverse
+    ///      priority, eating each Tranche's pending excess before its baseline
     ///      (and without freezing while only pending is lost).
     function test_inv_loss_pendingAbsorbsAtTranchePriority() public {
         _depositA(alice, 70e18);
@@ -215,7 +215,7 @@ contract InvariantsTest is Setup {
             controller.pendingExcess(address(bTranche)), 575_000_000_000_000_000, 1e15, "B pending nicked"
         );
         // Baselines are untouched, but losing pending excess still freezes a
-        // tranche (loss is loss, regardless of which part of the claim it hit).
+        // Tranche (loss is loss, regardless of which part of the claim it hit).
         assertApproxEqAbs(controller.liveAssets(address(bTranche)), 20_850_000_000_000_000_000, 1e15, "B base whole");
         assertApproxEqAbs(controller.liveAssets(address(aTranche)), 72_975_000_000_000_000_000, 1e15, "A base whole");
         assertTrue(controller.isFrozen(address(eTranche)), "E frozen on pending loss");
@@ -223,7 +223,7 @@ contract InvariantsTest is Setup {
         assertFalse(controller.isFrozen(address(aTranche)), "A untouched, not frozen");
     }
 
-    /// @dev A tranche taking a loss freezes and emits a single combined
+    /// @dev A Tranche taking a loss freezes and emits a single combined
     ///      TrancheLoss (here B's baseline absorbs the whole 10).
     function test_inv_trancheLoss_eventEmitted() public {
         _depositA(alice, 70e18);
@@ -238,7 +238,7 @@ contract InvariantsTest is Setup {
         _settle();
     }
 
-    /// @dev A tranche frozen by a loss resumes accrual automatically on
+    /// @dev A Tranche frozen by a loss resumes accrual automatically on
     ///      the next strictly profitable settle.
     function test_inv_autoUnfreeze_onProfitableSettle() public {
         _depositA(alice, 70e18);

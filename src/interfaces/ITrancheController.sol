@@ -3,20 +3,20 @@ pragma solidity >=0.8.18;
 
 /**
  * @title ITrancheController
- * @notice Controller surface used by the tranche strategies. Tranches are
- *         keyed by address — the controller resolves which tranche by
- *         looking `msg.sender` up in the per-tranche mapping. There is no
+ * @notice Controller surface used by the Tranche strategies. Tranches are
+ *         keyed by address — the controller resolves which Tranche by
+ *         looking `msg.sender` up in the per-Tranche mapping. There is no
  *         A/B/E specialised surface.
  */
 interface ITrancheController {
-    // Asset routing called from the tranches' BaseStrategy hooks.
+    // Asset routing called from the Tranches' BaseStrategy hooks.
     function depositFromTranche(uint256 amount) external;
     function withdrawFromTranche(uint256 amount) external;
 
     // Settlement.
     function settle() external;
 
-    // Called by a tranche during `report()` to move its pending excess
+    // Called by a Tranche during `report()` to move its pending excess
     // into the baseline so the profit can be locked.
     function realizeExcess() external returns (uint256);
 

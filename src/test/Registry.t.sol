@@ -6,11 +6,11 @@ import {Setup} from "./utils/Setup.sol";
 import {TrancheStrategy} from "../TrancheStrategy.sol";
 import {ITrancheStrategy} from "../interfaces/ITrancheStrategy.sol";
 
-/// @notice Positional tranche registration (insert-in-middle) and deprecation
+/// @notice Positional Tranche registration (insert-in-middle) and deprecation
 ///   via zeroed rates. Default order from Setup is [A, B, E].
 contract TrancheRegistryTest is Setup {
     /// @dev Deploy only — configuration that triggers accrual must wait until
-    ///      after the tranche is registered (else `liveAssets` reverts).
+    ///      after the Tranche is registered (else `liveAssets` reverts).
     function _newTranche(string memory _name) internal returns (TrancheStrategy t) {
         t = new TrancheStrategy(address(asset), _name, address(controller), address(hook));
     }
@@ -62,7 +62,7 @@ contract TrancheRegistryTest is Setup {
         controller.registerTrancheAt(address(c), 0, 1, 1);
     }
 
-    /// @dev Loss waterfall must honor the inserted tranche's priority: order
+    /// @dev Loss waterfall must honor the inserted Tranche's priority: order
     ///      [A, C, B, E] absorbs junior-first E -> B -> C -> A.
     function test_insertedTranche_honorsWaterfallOrder() public {
         TrancheStrategy c = _newTranche("Tranche C");
@@ -88,7 +88,7 @@ contract TrancheRegistryTest is Setup {
         assertTrue(controller.isFrozen(address(aTranche)));
     }
 
-    /// @dev Deprecate a tranche by zeroing its target + excess: it stops earning
+    /// @dev Deprecate a Tranche by zeroing its target + excess: it stops earning
     ///      but stays usable (holders can still withdraw their baseline).
     function test_deprecateViaZeroRates() public {
         vm.startPrank(governance);

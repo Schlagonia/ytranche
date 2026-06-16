@@ -7,15 +7,15 @@ import {TrancheStrategy} from "../src/TrancheStrategy.sol";
 import {LockedTrancheStrategy} from "../src/LockedTrancheStrategy.sol";
 import {TrancheController} from "../src/TrancheController.sol";
 import {Hook} from "../src/Hook.sol";
-import {Authorizer} from "../src/Authorizer.sol";
-import {EmergencyAdmin} from "../src/EmergencyAdmin.sol";
+import {Authorizer} from "../src/periphery/Authorizer.sol";
+import {EmergencyAdmin} from "../src/periphery/EmergencyAdmin.sol";
 import {IStrategy} from "@tokenized-strategy/interfaces/IStrategy.sol";
 
 /// @notice One-shot deploy script.
 ///
 ///   - A: `TrancheStrategy`        — atomic
 ///   - B: `LockedTrancheStrategy`  — cooldown 14d, withdrawal window 7d
-///   - E: `LockedTrancheStrategy`  — equity tranche, same cooldown shape as B
+///   - E: `LockedTrancheStrategy`  — equity Tranche, same cooldown shape as B
 ///   - reserveVault: any same-asset 4626 (e.g. Spark sUSDS, Yearn yvUSDC)
 contract DeployTrancheSystem is Script {
     // Mirrors BaseStrategy.tokenizedStrategyAddress in the constant_accual branch.
@@ -34,7 +34,7 @@ contract DeployTrancheSystem is Script {
 
         // Authorizer owns all access control; controller is hook-agnostic, so
         // no address prediction is needed: Authorizer → Controller → Hook →
-        // tranches.
+        // Tranches.
         Authorizer authorizer = new Authorizer(gov, management);
         TrancheController controller = new TrancheController(asset, mainVault, address(authorizer));
         Hook hook = new Hook(address(authorizer), address(controller));
@@ -50,7 +50,7 @@ contract DeployTrancheSystem is Script {
         LockedTrancheStrategy eTranche =
             new LockedTrancheStrategy(asset, "Tranche E", address(controller), address(hook), 14 days, 7 days);
 
-        // Per-tranche economic config (annualised target BPS, excess-share BPS)
+        // Per-Tranche economic config (annualised target BPS, excess-share BPS)
         // is supplied at registration time. Numbers mirror the test defaults.
         controller.registerTranche(address(aTranche), 425, 0); // A: 4.25% target, 0% excess
         controller.registerTranche(address(bTranche), 425, 4000); // B: 4.25% target, 40% excess

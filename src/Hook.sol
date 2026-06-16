@@ -3,7 +3,7 @@ pragma solidity ^0.8.18;
 
 import {IVault} from "@yearn-vaults/interfaces/IVault.sol";
 
-import {Authorized} from "./utils/Authorized.sol";
+import {Authorized} from "./periphery/Authorized.sol";
 import {IHook} from "./interfaces/IHook.sol";
 import {ITrancheController} from "./interfaces/ITrancheController.sol";
 import {VaultV3WithdrawLimit} from "./libraries/VaultV3WithdrawLimit.sol";
@@ -12,15 +12,15 @@ import {VaultV3WithdrawLimit} from "./libraries/VaultV3WithdrawLimit.sol";
  * @title Hook
  * @author ytranche
  * @notice
- *  Central security / policy contract for the tranche system. Wired
+ *  Central security / policy contract for the Tranche system. Wired
  *  directly as the Yearn V3 main-vault `deposit_hook` /
- *  `withdraw_hook` and consulted by every tranche's
+ *  `withdraw_hook` and consulted by every Tranche's
  *  `deposit` / `mint` / `withdraw` / `redeem` flow.
  *
  *  The controller is immutable and remains the source of truth for
- *  tranche registration + priority. Hook only keeps local policy state:
- *  rolling rate limits and the main-vault open/allow-list gate (per-tranche
- *  deposit gating lives on each tranche's {BaseHealthCheck}). System-wide halts
+ *  Tranche registration + priority. Hook only keeps local policy state:
+ *  rolling rate limits and the main-vault open/allow-list gate (per-Tranche
+ *  deposit gating lives on each Tranche's {BaseHealthCheck}). System-wide halts
  *  live on the {EmergencyAdmin} — it pauses/shuts down the vault and strategies
  *  directly. Solvency is controller state, not a Hook-level exit gate.
  *
@@ -63,7 +63,7 @@ contract Hook is IHook, Authorized {
     /// @notice Yearn V3 multi-strategy vault, read from the controller.
     IVault public immutable VAULT;
 
-    /// @notice Immutable controller. Hook reads tranche metadata from here.
+    /// @notice Immutable controller. Hook reads Tranche metadata from here.
     ITrancheController public immutable CONTROLLER;
 
     /*//////////////////////////////////////////////////////////////
@@ -71,8 +71,8 @@ contract Hook is IHook, Authorized {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Main-vault open switch. The main vault is gated by default; when
-    ///         `open` is true anyone may deposit into it directly. Per-tranche
-    ///         deposit gating lives on each tranche (its {BaseHealthCheck}
+    ///         `open` is true anyone may deposit into it directly. Per-Tranche
+    ///         deposit gating lives on each Tranche (its {BaseHealthCheck}
     ///         `open`/`allowed`). Withdrawals are never gated.
     bool public open;
 
@@ -88,11 +88,11 @@ contract Hook is IHook, Authorized {
     ///         limits are opt-in and must be configured by management.
     mapping(address => uint256) public depositLimits;
 
-    /// @notice Per-tranche rolling deposit rate limit.
+    /// @notice Per-Tranche rolling deposit rate limit.
     ///         `address(VAULT)` is reserved for the main vault ingress.
     mapping(address => Bucket) public depositRateLimit;
 
-    /// @notice Per-tranche rolling withdraw rate limit.
+    /// @notice Per-Tranche rolling withdraw rate limit.
     mapping(address => Bucket) public withdrawRateLimit;
 
     /*//////////////////////////////////////////////////////////////
@@ -129,7 +129,7 @@ contract Hook is IHook, Authorized {
         emit RateLimitWindowSet(_newRateLimitWindow);
     }
 
-    /// @notice Set the per-window deposit rate limit for a target (tranche, or
+    /// @notice Set the per-window deposit rate limit for a target (Tranche, or
     ///         the main vault via `address(VAULT)`). `0` (default) allows none.
     function setDepositRateLimit(address _target, uint128 _newRateLimit) external isAuthorized(MANAGEMENT_ROLE) {
         require(_target != address(0), "ZERO target");
@@ -138,7 +138,7 @@ contract Hook is IHook, Authorized {
         emit DepositRateLimitSet(_target, _newRateLimit);
     }
 
-    /// @notice Set the per-window withdraw rate limit for a target (tranche, or
+    /// @notice Set the per-window withdraw rate limit for a target (Tranche, or
     ///         the main vault via `address(VAULT)`). `0` (default) allows none.
     function setWithdrawRateLimit(address _target, uint128 _newRateLimit) external isAuthorized(MANAGEMENT_ROLE) {
         require(_target != address(0), "ZERO target");
@@ -152,7 +152,7 @@ contract Hook is IHook, Authorized {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Open (or re-gate) the main vault for permissionless direct
-    ///         deposits. Per-tranche gating lives on each tranche.
+    ///         deposits. Per-Tranche gating lives on each Tranche.
     function setOpen(bool _open) external isAuthorized(MANAGEMENT_ROLE) {
         open = _open;
 
@@ -170,12 +170,12 @@ contract Hook is IHook, Authorized {
                        CAPS FOR TRANCHE STRATEGIES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Rate / aggregate deposit cap for a tranche. The per-tranche
-    ///         open / allow-list gate is enforced on the tranche itself
+    /// @notice Rate / aggregate deposit cap for a Tranche. The per-Tranche
+    ///         open / allow-list gate is enforced on the Tranche itself
     ///         ({BaseHealthCheck}); this only meters throughput.
     function depositCap(address _tranche) external view returns (uint256) {
-        // Bound by the tranche's own deposit limit AND the shared main-vault
-        // ingress — a tranche deposit routes straight into the main vault, so it
+        // Bound by the Tranche's own deposit limit AND the shared main-vault
+        // ingress — a Tranche deposit routes straight into the main vault, so it
         // can never exceed what the main vault will accept.
         return _min(
             _vaultDepositLimit(_tranche, CONTROLLER.liveAssets(_tranche)),
@@ -197,8 +197,8 @@ contract Hook is IHook, Authorized {
     //////////////////////////////////////////////////////////////*/
 
     function available_deposit_limit(address _receiver) external view returns (uint256) {
-        // Main-vault gate. The controller itself (tranche-routed deposits) is
-        // always permitted — end users are already gated at the tranche level.
+        // Main-vault gate. The controller itself (Tranche-routed deposits) is
+        // always permitted — end users are already gated at the Tranche level.
         if (_receiver != address(CONTROLLER) && !open && !allowed[_receiver]) {
             return 0;
         }
@@ -218,10 +218,10 @@ contract Hook is IHook, Authorized {
     }
 
     /// @notice Meter a deposit against the caller's rolling rate limit. Wired as
-    ///         the main vault's `deposit_hook` and reused by each tranche's
+    ///         the main vault's `deposit_hook` and reused by each Tranche's
     ///         post-deposit hook. The bucket is keyed by `msg.sender`, so no
     ///         caller check is needed — a caller can only ever fill its own
-    ///         bucket, never the main vault's or another tranche's.
+    ///         bucket, never the main vault's or another Tranche's.
     function post_deposit(
         address, /*_sender*/
         address, /*_receiver*/
@@ -234,7 +234,7 @@ contract Hook is IHook, Authorized {
     }
 
     /// @notice Meter a withdrawal against the caller's rolling rate limit. Wired
-    ///         as the main vault's `withdraw_hook` and reused by each tranche's
+    ///         as the main vault's `withdraw_hook` and reused by each Tranche's
     ///         post-withdraw hook. Keyed by `msg.sender` (see {post_deposit}).
     function post_withdraw(
         address, /*_sender*/
@@ -283,9 +283,9 @@ contract Hook is IHook, Authorized {
 
     /// @dev Asset amount a vault will currently accept — the min of its rolling
     ///      deposit rate limit and aggregate deposit ceiling. `_target` is a
-    ///      tranche, or `address(VAULT)` for the main vault; `_current` is that
+    ///      Tranche, or `address(VAULT)` for the main vault; `_current` is that
     ///      target's current usage. Shared by the vault deposit hook and every
-    ///      tranche's `depositCap`.
+    ///      Tranche's `depositCap`.
     function _vaultDepositLimit(address _target, uint256 _current) internal view returns (uint256) {
         return
             _min(

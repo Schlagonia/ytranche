@@ -36,7 +36,7 @@ contract HookTest is Setup {
         _depositA(alice, 70e18);
 
         assertTrue(controller.isSolvent());
-        // Solvent system: a tranche deposit is not auto-blocked.
+        // Solvent system: a Tranche deposit is not auto-blocked.
         assertGt(ITrancheStrategy(address(aTranche)).maxDeposit(bob), 0);
     }
 
@@ -90,16 +90,16 @@ contract HookTest is Setup {
         vm.stopPrank();
     }
 
-    /// @dev A tranche's own maxDeposit reflects the shared main-vault ingress
+    /// @dev A Tranche's own maxDeposit reflects the shared main-vault ingress
     ///      limit (deposits route straight into the main vault), and the limit
-    ///      is shared across tranches.
+    ///      is shared across Tranches.
     function test_trancheMaxDeposit_respectsMainVaultLimit() public {
         vm.prank(management);
         hook.setDepositLimit(address(mainVault), 10e18);
 
         _depositA(alice, 7e18);
 
-        // 3e18 of main-vault headroom remains — both tranches see it.
+        // 3e18 of main-vault headroom remains — both Tranches see it.
         assertEq(ITrancheStrategy(address(aTranche)).maxDeposit(bob), 3e18, "A maxDeposit capped by main vault");
         assertEq(ITrancheStrategy(address(bTranche)).maxDeposit(bob), 3e18, "B shares the same main-vault headroom");
 
@@ -125,7 +125,7 @@ contract HookTest is Setup {
     }
 
     function test_gatedVault_onlyAllowedCanDeposit() public {
-        // Per-tranche gating lives on the tranche (this contract is management).
+        // Per-Tranche gating lives on the Tranche (this contract is management).
         ITrancheStrategy(address(aTranche)).setOpen(false); // re-gate A
         ITrancheStrategy(address(aTranche)).setAllowed(alice, true);
 
@@ -140,7 +140,7 @@ contract HookTest is Setup {
     }
 
     /// @dev The main-vault gate (keyed by the vault) blocks direct deposits by
-    ///      receiver, while the controller's own tranche-routed deposits remain
+    ///      receiver, while the controller's own Tranche-routed deposits remain
     ///      permitted regardless.
     function test_mainVault_gateBlocksDirectDeposit() public {
         vm.prank(management);
@@ -238,7 +238,7 @@ contract HookTest is Setup {
     }
 
     /// @dev When the main vault can only deliver part of the position, the
-    ///      tranche's maxWithdraw is capped to that deliverable and a larger
+    ///      Tranche's maxWithdraw is capped to that deliverable and a larger
     ///      redemption reverts rather than raiding the reserve.
     function test_trancheWithdraw_cappedByVaultLiquidity() public {
         _depositA(alice, 100e18);
@@ -249,7 +249,7 @@ contract HookTest is Setup {
         riskyStrategy.setWithdrawLimit(40e18);
 
         assertEq(controller.vaultMaxWithdraw(), 40e18, "controller deliverable throttled");
-        assertEq(ITrancheStrategy(address(aTranche)).maxWithdraw(alice), 40e18, "tranche maxWithdraw capped");
+        assertEq(ITrancheStrategy(address(aTranche)).maxWithdraw(alice), 40e18, "Tranche maxWithdraw capped");
 
         // Redeeming the whole position exceeds the cap -> revert.
         vm.prank(alice);
