@@ -22,8 +22,7 @@ import {VaultV3WithdrawLimit} from "./libraries/VaultV3WithdrawLimit.sol";
  *  rolling rate limits and the main-vault open/allow-list gate (per-tranche
  *  deposit gating lives on each tranche's {BaseHealthCheck}). System-wide halts
  *  live on the {EmergencyAdmin} — it pauses/shuts down the vault and strategies
- *  directly. Tranche withdrawals auto-block here while the controller is
- *  insolvent (see {withdrawCap}); deposits are still allowed.
+ *  directly. Solvency is controller state, not a Hook-level exit gate.
  *
  *  Access control is delegated to the shared {Authorizer}: limit and allow-list
  *  config requires MANAGEMENT (governance, the superuser, satisfies it too).
@@ -185,13 +184,11 @@ contract Hook is IHook, Authorized {
     }
 
     function withdrawCap(address _tranche) external view returns (uint256) {
-        if (!CONTROLLER.isSolvent()) return 0;
-
         // Withdrawals are never allow-list gated — holders can always exit, so
         // there is no owner to check. Bound by the rolling rate limit and the
-        // controller's loss-free main-vault deliverable so a redemption never
-        // out-runs main-vault liquidity (the reserve is a settlement-time
-        // backstop, not a redemption source).
+        // controller's main-vault deliverable so a redemption never out-runs
+        // main-vault liquidity (the reserve is a settlement-time backstop, not
+        // a redemption source).
         return _min(_rateLimitAvailable(withdrawRateLimit[_tranche]), CONTROLLER.vaultMaxWithdraw());
     }
 

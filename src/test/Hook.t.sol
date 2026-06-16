@@ -7,7 +7,7 @@ import {IStrategy} from "@tokenized-strategy/interfaces/IStrategy.sol";
 import {ITrancheStrategy} from "../interfaces/ITrancheStrategy.sol";
 
 contract HookTest is Setup {
-    function test_insolvency_allowsDepositsButBlocksWithdrawals() public {
+    function test_insolvency_allowsDepositsAndWithdrawals() public {
         _depositA(alice, 70e18);
         _depositB(bob, 20e18);
         _fundReserve(10e18);
@@ -22,10 +22,14 @@ contract HookTest is Setup {
         ITrancheStrategy(address(aTranche)).deposit(1e18, carol);
         vm.stopPrank();
 
-        // Exits remain blocked while insolvent.
+        // Exits are still allowed while insolvent, bounded by vault liquidity
+        // and rate limits. The reserve is not touched by redemptions.
+        assertGt(ITrancheStrategy(address(aTranche)).maxWithdraw(alice), 0);
+        uint256 reserveBefore = controller.reserveAssets();
         vm.prank(alice);
-        vm.expectRevert();
-        ITrancheStrategy(address(aTranche)).redeem(1, alice, alice);
+        uint256 received = ITrancheStrategy(address(aTranche)).redeem(1, alice, alice);
+        assertGt(received, 0, "redeem delivered assets");
+        assertEq(controller.reserveAssets(), reserveBefore, "reserve untouched");
     }
 
     function test_exactlyCoveredSystem_isNotAutoPaused() public {

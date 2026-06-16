@@ -20,8 +20,8 @@ import {Roles} from "./utils/Roles.sol";
  *  A few standard roles are declared below. Any contract may declare its own
  *  role — global (`keccak256("FOO_ROLE")`) or contract-scoped
  *  (`keccak256(abi.encodePacked(address(this), "FOO_ROLE"))`) — grant it through
- *  governance, and gate on it by inheriting {Authorized}. Governance is the
- *  default admin of every role (standard or custom), so no edit here is needed.
+ *  the default admin, and gate on it by inheriting {Authorized}. Governance and
+ *  default admin start as the same address, then can diverge.
  *
  *  Role-admin chain: MANAGEMENT_ROLE administers KEEPER_ROLE and EMERGENCY_ROLE
  *  (keeper / emergency membership can be delegated to a manager). Governance
@@ -38,31 +38,31 @@ import {Roles} from "./utils/Roles.sol";
  *          function b() external hasRole(THIS_MANAGER_ROLE) {}      // role strictly
  *      }
  *
- *  Governance is single-holder and moves via a two-step handoff expressed with
- *  the native role-admin chain: the current governor grants
- *  `PENDING_GOVERNANCE_ROLE` to the proposed holder, who then grants themselves
- *  `GOVERNANCE_ROLE` (its admin is the pending role). The {grantRole} override
- *  finalizes the swap — clearing the pending role and moving GOVERNANCE_ROLE +
- *  the default admin off the prior governor.
+ *  Governance and default admin are each single-holder and move via separate
+ *  two-step handoffs expressed with the native role-admin chain. The {grantRole}
+ *  override finalizes each swap by clearing the matching pending role and
+ *  revoking the prior holder.
  */
 contract Authorizer is Roles, IAuthorizer, AccessControlEnumerable {
     bytes32 public constant PENDING_GOVERNANCE_ROLE = keccak256("PENDING_GOVERNANCE_ROLE");
+    bytes32 public constant PENDING_DEFAULT_ADMIN_ROLE = keccak256("PENDING_DEFAULT_ADMIN_ROLE");
 
     constructor(address _governance, address _management) {
         require(_governance != address(0), "ZERO governance");
         require(_management != address(0), "ZERO management");
 
-        // Governance is the superuser and the default admin of every role a
-        // downstream contract invents. Management is separate and administers
-        // the management-scoped operational roles below.
+        // Governance is the runtime superuser. The default admin controls role
+        // membership / role-admin plumbing. They begin equal, then may diverge.
         _grantRole(DEFAULT_ADMIN_ROLE, _governance);
         _grantRole(GOVERNANCE_ROLE, _governance);
         _grantRole(MANAGEMENT_ROLE, _management);
 
-        // Two-step handoff: governance proposes a pending holder, who then
-        // claims GOVERNANCE_ROLE (finalized in the {grantRole} override).
+        // Two-step handoffs: current holder proposes a pending holder, who then
+        // claims the live role (finalized in the {grantRole} override).
         _setRoleAdmin(PENDING_GOVERNANCE_ROLE, GOVERNANCE_ROLE);
         _setRoleAdmin(GOVERNANCE_ROLE, PENDING_GOVERNANCE_ROLE);
+        _setRoleAdmin(PENDING_DEFAULT_ADMIN_ROLE, DEFAULT_ADMIN_ROLE);
+        _setRoleAdmin(DEFAULT_ADMIN_ROLE, PENDING_DEFAULT_ADMIN_ROLE);
 
         // Management administers keeper / emergency, so their membership can be
         // delegated to managers without bothering governance.
@@ -86,25 +86,37 @@ contract Authorizer is Roles, IAuthorizer, AccessControlEnumerable {
         return super.hasRole(role, account);
     }
 
-    /// @dev Finalize the two-step governance handoff. Only the pending holder
-    ///      can grant GOVERNANCE_ROLE (PENDING_GOVERNANCE_ROLE admins it); doing
-    ///      so clears the pending role and moves GOVERNANCE_ROLE + the default
-    ///      admin off the prior governor, keeping a single governor.
+    /// @dev Finalize the two-step governance / default-admin handoffs. Only the
+    ///      pending holder can claim the live role; doing so clears the pending
+    ///      role and revokes the prior live holder.
     function grantRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
         super.grantRole(role, account);
         if (role == GOVERNANCE_ROLE) {
             address previous = getRoleMember(GOVERNANCE_ROLE, 0);
             _revokeRole(PENDING_GOVERNANCE_ROLE, account);
             _revokeRole(GOVERNANCE_ROLE, previous);
-            _grantRole(DEFAULT_ADMIN_ROLE, account);
+        } else if (role == DEFAULT_ADMIN_ROLE) {
+            address previous = getRoleMember(DEFAULT_ADMIN_ROLE, 0);
+            _revokeRole(PENDING_DEFAULT_ADMIN_ROLE, account);
             _revokeRole(DEFAULT_ADMIN_ROLE, previous);
         }
+    }
+
+    /// @notice Update the admin role for a non-core role.
+    function setRoleAdmin(bytes32 role, bytes32 adminRole) external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "!default admin");
+        require(
+            role != DEFAULT_ADMIN_ROLE && role != PENDING_DEFAULT_ADMIN_ROLE && role != GOVERNANCE_ROLE
+                && role != PENDING_GOVERNANCE_ROLE,
+            "locked admin role"
+        );
+        _setRoleAdmin(role, adminRole);
     }
 
     /// @dev Governance / default admin cannot be renounced — they only move via
     ///      the two-step handoff, so the system can never be left ungoverned.
     function renounceRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
-        require(role != GOVERNANCE_ROLE && role != DEFAULT_ADMIN_ROLE, "cannot renounce governance");
+        require(role != GOVERNANCE_ROLE && role != DEFAULT_ADMIN_ROLE, "cannot renounce core role");
         super.renounceRole(role, account);
     }
 
@@ -113,8 +125,21 @@ contract Authorizer is Roles, IAuthorizer, AccessControlEnumerable {
         return getRoleMember(GOVERNANCE_ROLE, 0);
     }
 
+    /// @notice Current default admin holder (the single DEFAULT_ADMIN_ROLE member).
+    function defaultAdmin() external view returns (address) {
+        return getRoleMember(DEFAULT_ADMIN_ROLE, 0);
+    }
+
     /// @notice Address proposed to take over governance (PENDING_GOVERNANCE_ROLE).
     function pendingGovernance() external view returns (address) {
         return getRoleMemberCount(PENDING_GOVERNANCE_ROLE) == 0 ? address(0) : getRoleMember(PENDING_GOVERNANCE_ROLE, 0);
+    }
+
+    /// @notice Address proposed to take over default admin (PENDING_DEFAULT_ADMIN_ROLE).
+    function pendingDefaultAdmin() external view returns (address) {
+        return
+            getRoleMemberCount(PENDING_DEFAULT_ADMIN_ROLE) == 0
+                ? address(0)
+                : getRoleMember(PENDING_DEFAULT_ADMIN_ROLE, 0);
     }
 }

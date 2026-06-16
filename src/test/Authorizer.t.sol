@@ -7,8 +7,9 @@ import {Setup} from "./utils/Setup.sol";
 /// @notice Access-control matrix + two-step governance handoff on the generic
 ///   Authorizer that the Hook and Controller delegate to. The model is flat:
 ///   `isAuthorized(role, account)` is true only when the account holds `role`
-///   directly OR holds GOVERNANCE_ROLE (the sole superuser). Roles do not imply
-///   one another — management does NOT satisfy emergency/keeper.
+///   directly OR holds GOVERNANCE_ROLE (the runtime superuser). Default admin
+///   manages membership / role-admin plumbing. Roles do not imply one another —
+///   management does NOT satisfy emergency/keeper.
 contract AuthorizerTest is Setup {
     function test_twoStepGovernanceTransfer() public {
         bytes32 govRole = authorizer.GOVERNANCE_ROLE();
@@ -33,17 +34,57 @@ contract AuthorizerTest is Setup {
         assertTrue(authorizer.isAuthorized(govRole, carol));
         assertFalse(authorizer.isAuthorized(govRole, governance), "old governance demoted");
 
-        // The new governor inherited default admin, but not management.
+        // Governance moved. Default admin did not. Separate keys, separate doors.
+        assertEq(authorizer.defaultAdmin(), governance, "default admin stayed put");
         assertFalse(authorizer.hasRole(authorizer.MANAGEMENT_ROLE(), carol), "new governance is not management");
 
-        // Governance can grant a specific manager, who then administers operational roles.
+        // The new governor is still a runtime superuser, but cannot manage roles
+        // unless it also holds DEFAULT_ADMIN_ROLE.
         bytes32 mgmtRole = authorizer.MANAGEMENT_ROLE();
         bytes32 keeperRole = authorizer.KEEPER_ROLE();
         vm.prank(carol);
+        vm.expectRevert();
+        authorizer.grantRole(mgmtRole, eve);
+
+        // Default admin can grant a specific manager, who then administers
+        // operational roles.
+        vm.prank(governance);
         authorizer.grantRole(mgmtRole, eve);
         vm.prank(eve);
         authorizer.grantRole(keeperRole, bob);
         assertTrue(authorizer.hasRole(keeperRole, bob));
+    }
+
+    function test_twoStepDefaultAdminTransfer() public {
+        bytes32 defaultAdminRole = authorizer.DEFAULT_ADMIN_ROLE();
+        bytes32 pendingRole = authorizer.PENDING_DEFAULT_ADMIN_ROLE();
+        bytes32 mgmtRole = authorizer.MANAGEMENT_ROLE();
+
+        assertEq(authorizer.governance(), governance, "governance starts equal");
+        assertEq(authorizer.defaultAdmin(), governance, "default admin starts equal");
+
+        vm.prank(governance);
+        authorizer.grantRole(pendingRole, carol);
+        assertEq(authorizer.defaultAdmin(), governance, "old default admin still in control");
+        assertEq(authorizer.pendingDefaultAdmin(), carol, "pending admin set");
+
+        vm.prank(bob);
+        vm.expectRevert();
+        authorizer.grantRole(defaultAdminRole, bob);
+
+        vm.prank(carol);
+        authorizer.grantRole(defaultAdminRole, carol);
+        assertEq(authorizer.defaultAdmin(), carol, "default admin transferred");
+        assertEq(authorizer.pendingDefaultAdmin(), address(0), "pending admin cleared");
+        assertEq(authorizer.governance(), governance, "governance did not move");
+
+        vm.prank(governance);
+        vm.expectRevert();
+        authorizer.grantRole(mgmtRole, eve);
+
+        vm.prank(carol);
+        authorizer.grantRole(mgmtRole, eve);
+        assertTrue(authorizer.hasRole(mgmtRole, eve), "new default admin grants roles");
     }
 
     function test_governanceCannotBeGrantedDirectlyOrRenounced() public {
@@ -54,8 +95,64 @@ contract AuthorizerTest is Setup {
         vm.expectRevert();
         authorizer.grantRole(govRole, carol);
         // Governance cannot renounce (would brick the system).
-        vm.expectRevert(bytes("cannot renounce governance"));
+        vm.expectRevert(bytes("cannot renounce core role"));
         authorizer.renounceRole(govRole, governance);
+        vm.stopPrank();
+    }
+
+    function test_defaultAdminCannotBeGrantedDirectlyOrRenounced() public {
+        bytes32 defaultAdminRole = authorizer.DEFAULT_ADMIN_ROLE();
+        vm.startPrank(governance);
+        // DEFAULT_ADMIN_ROLE's admin is PENDING_DEFAULT_ADMIN_ROLE, so even the
+        // current default admin must use the handoff.
+        vm.expectRevert();
+        authorizer.grantRole(defaultAdminRole, carol);
+        vm.expectRevert(bytes("cannot renounce core role"));
+        authorizer.renounceRole(defaultAdminRole, governance);
+        vm.stopPrank();
+    }
+
+    function test_setRoleAdminIsDefaultAdminOnly() public {
+        bytes32 defaultAdminRole = authorizer.DEFAULT_ADMIN_ROLE();
+        bytes32 pendingAdminRole = authorizer.PENDING_DEFAULT_ADMIN_ROLE();
+        bytes32 managementRole = authorizer.MANAGEMENT_ROLE();
+        bytes32 customRole = keccak256("CUSTOM_ROLE");
+
+        vm.prank(governance);
+        authorizer.grantRole(pendingAdminRole, carol);
+        vm.prank(carol);
+        authorizer.grantRole(defaultAdminRole, carol);
+
+        vm.prank(governance);
+        vm.expectRevert(bytes("!default admin"));
+        authorizer.setRoleAdmin(customRole, managementRole);
+
+        vm.prank(carol);
+        authorizer.setRoleAdmin(customRole, managementRole);
+        assertEq(authorizer.getRoleAdmin(customRole), managementRole);
+
+        vm.prank(carol);
+        authorizer.grantRole(managementRole, eve);
+        vm.prank(eve);
+        authorizer.grantRole(customRole, bob);
+        assertTrue(authorizer.hasRole(customRole, bob), "custom admin updated");
+    }
+
+    function test_setRoleAdminDoesNotRewriteCoreHandoffs() public {
+        bytes32 defaultAdminRole = authorizer.DEFAULT_ADMIN_ROLE();
+        bytes32 pendingDefaultAdminRole = authorizer.PENDING_DEFAULT_ADMIN_ROLE();
+        bytes32 governanceRole = authorizer.GOVERNANCE_ROLE();
+        bytes32 pendingGovernanceRole = authorizer.PENDING_GOVERNANCE_ROLE();
+
+        vm.startPrank(governance);
+        vm.expectRevert(bytes("locked admin role"));
+        authorizer.setRoleAdmin(governanceRole, defaultAdminRole);
+        vm.expectRevert(bytes("locked admin role"));
+        authorizer.setRoleAdmin(pendingGovernanceRole, defaultAdminRole);
+        vm.expectRevert(bytes("locked admin role"));
+        authorizer.setRoleAdmin(defaultAdminRole, governanceRole);
+        vm.expectRevert(bytes("locked admin role"));
+        authorizer.setRoleAdmin(pendingDefaultAdminRole, governanceRole);
         vm.stopPrank();
     }
 
@@ -147,8 +244,8 @@ contract AuthorizerTest is Setup {
     }
 
     function test_customRoleWorksWithoutAuthorizerEdit() public {
-        // A role the Authorizer never declared is administered by governance and
-        // checks like any other — proving the generic surface.
+        // A role the Authorizer never declared is administered by default admin
+        // and checks like any other — proving the generic surface.
         bytes32 customRole = keccak256("CUSTOM_ROLE");
 
         assertFalse(authorizer.isAuthorized(customRole, carol));
