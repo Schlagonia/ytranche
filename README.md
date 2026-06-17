@@ -98,9 +98,9 @@ It controls:
 - Main-vault direct-deposit gating through `open` and `allowed`.
 - Withdrawal caps based on main-vault deliverable assets.
 
-Deposits and withdrawals are not blocked just because `controller.isSolvent()`
-is false. Withdrawals are still bounded by hook rate limits and main-vault
-deliverable liquidity.
+Deposits and withdrawals are not blocked just because
+`controller.trancheCoverage(tranche)` reports `covered < claim`. Withdrawals
+are still bounded by hook rate limits and main-vault deliverable liquidity.
 
 Tranche-level user gating lives on each Tranche strategy through the inherited
 Yearn `BaseHealthCheck` surface. Main-vault direct deposit gating lives on
@@ -136,6 +136,8 @@ admin relationships. Core handoff roles are locked.
 - set a vault strategy's max debt to zero.
 
 The contract must hold the needed Yearn vault roles for those actions to land.
+Shutdown actions are management-gated. Pause, emergency withdraw, and max-debt
+zero actions are emergency-gated.
 
 ## Current Test Configuration
 

@@ -41,7 +41,7 @@ import {Roles} from "./Roles.sol";
  *  Governance and default admin are each single-holder and move via separate
  *  two-step handoffs expressed with the native role-admin chain. The {grantRole}
  *  override finalizes each swap by clearing the matching pending role and
- *  revoking the prior holder.
+ *  revoking the prior holder. Role renouncing is disabled.
  */
 contract Authorizer is Roles, IAuthorizer, AccessControlEnumerable {
     bytes32 public constant PENDING_GOVERNANCE_ROLE = keccak256("PENDING_GOVERNANCE_ROLE");
@@ -113,11 +113,10 @@ contract Authorizer is Roles, IAuthorizer, AccessControlEnumerable {
         _setRoleAdmin(role, adminRole);
     }
 
-    /// @dev Governance / default admin cannot be renounced — they only move via
-    ///      the two-step handoff, so the system can never be left ungoverned.
-    function renounceRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
-        require(role != GOVERNANCE_ROLE && role != DEFAULT_ADMIN_ROLE, "cannot renounce core role");
-        super.renounceRole(role, account);
+    /// @dev Role renouncing is disabled. Role removal must go through the
+    ///      relevant role admin via {revokeRole}.
+    function renounceRole(bytes32, address) public pure override(AccessControl, IAccessControl) {
+        revert("renounce disabled");
     }
 
     /// @notice Current governance holder (the single GOVERNANCE_ROLE member).

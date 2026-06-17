@@ -8,9 +8,8 @@ import {IStrategy} from "@tokenized-strategy/interfaces/IStrategy.sol";
  * @title VaultV3WithdrawLimit
  * @notice Mirrors the queue path of Yearn VaultV3's internal
  *         `_max_withdraw` logic.
- * @dev The vault resolves the withdrawal queue before calling the hook.
- *      Direct hook calls may still pass an empty queue, so those fall back
- *      to the vault's default queue.
+ * @dev The vault resolves the withdrawal queue before calling the hook, so the
+ *      passed `_strategies` array is already the queue VaultV3 will use.
  */
 library VaultV3WithdrawLimit {
     uint256 internal constant MAX_BPS = 10_000;
@@ -20,70 +19,59 @@ library VaultV3WithdrawLimit {
         view
         returns (uint256)
     {
+        if (_vault.isPaused()) return 0;
+
         uint256 maxAssets = _vault.convertToAssets(_vault.balanceOf(_owner));
-        uint256 currentIdle = _vault.totalIdle();
+        uint256 have = _vault.totalIdle();
+        if (maxAssets <= have) return maxAssets;
 
-        if (maxAssets <= currentIdle) return maxAssets;
-
-        uint256 have = currentIdle;
         uint256 loss = 0;
 
-        address[] memory queue = _strategies.length == 0 ? _vault.get_default_queue() : _strategies;
-        return _maxWithdrawFromQueue(_vault, queue, maxAssets, have, loss, _maxLoss);
-    }
+        for (uint256 i; i < _strategies.length; ++i) {
+            address strategy = _strategies[i];
 
-    function _maxWithdrawFromQueue(
-        IVault _vault,
-        address[] memory _queue,
-        uint256 _maxAssets,
-        uint256 _have,
-        uint256 _loss,
-        uint256 _maxLoss
-    ) private view returns (uint256) {
-        for (uint256 i; i < _queue.length; ++i) {
-            address strategy = _queue[i];
-            IVault.StrategyParams memory params = _vault.strategies(strategy);
-            require(params.activation != 0, "inactive strategy");
+            uint256 currentDebt;
+            {
+                IVault.StrategyParams memory params = _vault.strategies(strategy);
+                require(params.activation != 0, "inactive strategy");
+                currentDebt = params.current_debt;
+            }
 
-            uint256 currentDebt = params.current_debt;
-            uint256 toWithdraw = _min(_maxAssets - _have, currentDebt);
+            uint256 toWithdraw = _min(maxAssets - have, currentDebt);
             uint256 unrealisedLoss = _assessShareOfUnrealisedLosses(_vault, strategy, currentDebt, toWithdraw);
-            (toWithdraw, unrealisedLoss) = _applyStrategyLimit(_vault, strategy, toWithdraw, unrealisedLoss);
+
+            {
+                uint256 strategyLimit = _strategyWithdrawLimit(_vault, strategy);
+                uint256 realizableWithdraw = toWithdraw - unrealisedLoss;
+
+                if (strategyLimit < realizableWithdraw) {
+                    if (unrealisedLoss != 0) {
+                        unrealisedLoss = (unrealisedLoss * strategyLimit) / realizableWithdraw;
+                    }
+
+                    toWithdraw = strategyLimit + unrealisedLoss;
+                }
+            }
 
             if (toWithdraw == 0) continue;
 
             if (unrealisedLoss > 0 && _maxLoss < MAX_BPS) {
-                if (_loss + unrealisedLoss > ((_have + toWithdraw) * _maxLoss) / MAX_BPS) {
+                if (loss + unrealisedLoss > ((have + toWithdraw) * _maxLoss) / MAX_BPS) {
                     break;
                 }
             }
 
-            _have += toWithdraw;
-            if (_have >= _maxAssets) break;
+            have += toWithdraw;
+            if (have >= maxAssets) break;
 
-            _loss += unrealisedLoss;
+            loss += unrealisedLoss;
         }
 
-        return _have;
+        return have;
     }
 
-    function _applyStrategyLimit(IVault _vault, address _strategy, uint256 _toWithdraw, uint256 _unrealisedLoss)
-        private
-        view
-        returns (uint256, uint256)
-    {
-        uint256 realizableWithdraw = _toWithdraw - _unrealisedLoss;
-        uint256 strategyLimit = IStrategy(_strategy).convertToAssets(IStrategy(_strategy).maxRedeem(address(_vault)));
-
-        if (strategyLimit >= realizableWithdraw) {
-            return (_toWithdraw, _unrealisedLoss);
-        }
-
-        if (_unrealisedLoss != 0) {
-            _unrealisedLoss = (_unrealisedLoss * strategyLimit) / realizableWithdraw;
-        }
-
-        return (strategyLimit + _unrealisedLoss, _unrealisedLoss);
+    function _strategyWithdrawLimit(IVault _vault, address _strategy) private view returns (uint256) {
+        return IStrategy(_strategy).convertToAssets(IStrategy(_strategy).maxRedeem(address(_vault)));
     }
 
     function _assessShareOfUnrealisedLosses(
@@ -100,8 +88,8 @@ library VaultV3WithdrawLimit {
         uint256 numerator = _assetsNeeded * strategyAssets;
         uint256 usersShareOfLoss = _assetsNeeded - (numerator / _strategyCurrentDebt);
         // Mirror VaultV3: only round up when there is a remainder AND the share
-        // is still below assetsNeeded, otherwise the loss could exceed the amount
-        // requested and underflow `_applyStrategyLimit`'s realizableWithdraw.
+        // is still below assetsNeeded, otherwise the loss could exceed the
+        // requested amount and underflow `toWithdraw - unrealisedLoss`.
         if (numerator % _strategyCurrentDebt != 0 && usersShareOfLoss < _assetsNeeded) {
             usersShareOfLoss += 1;
         }

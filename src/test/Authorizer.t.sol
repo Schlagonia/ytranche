@@ -94,8 +94,7 @@ contract AuthorizerTest is Setup {
         // governor cannot grant it directly without going through the handoff.
         vm.expectRevert();
         authorizer.grantRole(govRole, carol);
-        // Governance cannot renounce (would brick the system).
-        vm.expectRevert(bytes("cannot renounce core role"));
+        vm.expectRevert(bytes("renounce disabled"));
         authorizer.renounceRole(govRole, governance);
         vm.stopPrank();
     }
@@ -107,9 +106,17 @@ contract AuthorizerTest is Setup {
         // current default admin must use the handoff.
         vm.expectRevert();
         authorizer.grantRole(defaultAdminRole, carol);
-        vm.expectRevert(bytes("cannot renounce core role"));
+        vm.expectRevert(bytes("renounce disabled"));
         authorizer.renounceRole(defaultAdminRole, governance);
         vm.stopPrank();
+    }
+
+    function test_renounceRoleDisabledForNonCoreRoles() public {
+        bytes32 mgmtRole = authorizer.MANAGEMENT_ROLE();
+
+        vm.prank(management);
+        vm.expectRevert(bytes("renounce disabled"));
+        authorizer.renounceRole(mgmtRole, management);
     }
 
     function test_setRoleAdminIsDefaultAdminOnly() public {

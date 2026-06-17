@@ -13,17 +13,19 @@ contract HookTest is Setup {
         _fundReserve(10e18);
         _simulateRiskyPnL(-int256(15e18));
 
-        assertFalse(controller.isSolvent());
+        (uint256 bClaim, uint256 bCovered) = controller.trancheCoverage(address(bTranche));
+        assertLt(bCovered, bClaim, "B under-covered");
+        assertGt(bClaim - bCovered, 0, "B shortfall");
 
-        // New capital can still enter an insolvent system.
+        // New capital can still enter while a junior Tranche is under-covered.
         _airdrop(carol, 1e18);
         vm.startPrank(carol);
         asset.approve(address(aTranche), 1e18);
         ITrancheStrategy(address(aTranche)).deposit(1e18, carol);
         vm.stopPrank();
 
-        // Exits are still allowed while insolvent, bounded by vault liquidity
-        // and rate limits. The reserve is not touched by redemptions.
+        // Exits are still allowed while under-covered, bounded by vault
+        // liquidity and rate limits. The reserve is not touched by redemptions.
         assertGt(ITrancheStrategy(address(aTranche)).maxWithdraw(alice), 0);
         uint256 reserveBefore = controller.reserveAssets();
         vm.prank(alice);
@@ -35,8 +37,9 @@ contract HookTest is Setup {
     function test_exactlyCoveredSystem_isNotAutoPaused() public {
         _depositA(alice, 70e18);
 
-        assertTrue(controller.isSolvent());
-        // Solvent system: a Tranche deposit is not auto-blocked.
+        (uint256 aClaim, uint256 aCovered) = controller.trancheCoverage(address(aTranche));
+        assertEq(aCovered, aClaim, "A covered");
+        // Covered system: a Tranche deposit is not auto-blocked.
         assertGt(ITrancheStrategy(address(aTranche)).maxDeposit(bob), 0);
     }
 
@@ -200,13 +203,39 @@ contract HookTest is Setup {
         _depositA(alice, 100e18);
         riskyStrategy.setWithdrawLimit(80e18);
 
-        address[] memory empty;
+        address[] memory queue = mainVault.get_default_queue();
 
-        assertEq(hook.available_withdraw_limit(address(controller), 0, empty), 80e18);
-        assertEq(hook.available_withdraw_limit(address(controller), 10_000, empty), 80e18);
+        assertEq(hook.available_withdraw_limit(address(controller), 0, queue), 80e18);
+        assertEq(hook.available_withdraw_limit(address(controller), 10_000, queue), 80e18);
         assertEq(mainVault.maxWithdraw(address(controller)), 80e18);
         assertEq(mainVault.maxWithdraw(address(controller), 10_000), 80e18);
         assertEq(mainVault.maxRedeem(address(controller)), 80e18);
+    }
+
+    function test_mainVaultWithdrawLimit_usesResolvedQueueOnly() public {
+        _depositA(alice, 100e18);
+        riskyStrategy.setWithdrawLimit(80e18);
+
+        address[] memory empty;
+        assertEq(mainVault.totalIdle(), 0, "idle");
+        assertEq(hook.available_withdraw_limit(address(controller), 10_000, empty), 0, "empty queue only sees idle");
+
+        address[] memory queue = mainVault.get_default_queue();
+        assertEq(
+            hook.available_withdraw_limit(address(controller), 10_000, queue),
+            mainVault.maxWithdraw(address(controller), 10_000),
+            "resolved queue mirrors vault"
+        );
+    }
+
+    function test_mainVaultWithdrawLimit_zeroWhenPaused() public {
+        _depositA(alice, 100e18);
+
+        mainVault.setPaused(true);
+
+        address[] memory queue = mainVault.get_default_queue();
+        assertEq(hook.available_withdraw_limit(address(controller), 10_000, queue), 0, "paused hook limit");
+        assertEq(mainVault.maxWithdraw(address(controller), 10_000), 0, "paused vault limit");
     }
 
     /// @dev Under an *unrealised* strategy loss (realised at the strategy level
@@ -223,15 +252,15 @@ contract HookTest is Setup {
         // NOTE: deliberately NOT calling mainVault.process_report — the vault
         // still books 100e18 debt while the strategy is worth 90e18.
 
-        address[] memory empty;
+        address[] memory queue = mainVault.get_default_queue();
 
         assertEq(
-            hook.available_withdraw_limit(address(controller), 10_000, empty),
+            hook.available_withdraw_limit(address(controller), 10_000, queue),
             mainVault.maxWithdraw(address(controller), 10_000),
             "mirror == vault (lenient loss)"
         );
         assertEq(
-            hook.available_withdraw_limit(address(controller), 0, empty),
+            hook.available_withdraw_limit(address(controller), 0, queue),
             mainVault.maxWithdraw(address(controller), 0),
             "mirror == vault (no loss tolerated)"
         );

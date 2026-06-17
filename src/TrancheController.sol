@@ -291,51 +291,8 @@ contract TrancheController is Authorized {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              LIVE NAV VIEW
+                             VIEWS
     //////////////////////////////////////////////////////////////*/
-
-    /// @notice Live NAV for a Tranche — its NAV source. Reverts if the Tranche
-    ///         is not registered.
-    function liveAssets(address _tranche) external view returns (uint256) {
-        Tranche memory tranche = tranches[_tranche];
-        require(tranche.registered, "!tranche");
-        return _liveAssetsView(tranche);
-    }
-
-    function isFrozen(address _tranche) external view returns (bool) {
-        return tranches[_tranche].frozen;
-    }
-
-    /// @notice Whether `_tranche` is a registered Tranche. Consulted by the
-    ///         Hook to gate per-Tranche rate-limit consumption.
-    function isTranche(address _tranche) external view returns (bool) {
-        return tranches[_tranche].registered;
-    }
-
-    /// @notice Excess recorded at settlement awaiting realisation via
-    ///         {realizeExcess}. Not part of the Tranche's live NAV.
-    function pendingExcess(address _tranche) external view returns (uint256) {
-        return tranches[_tranche].pendingExcess;
-    }
-
-    /// @notice Reserve held in the 4626 vault.
-    function reserveAssets() public view returns (uint256) {
-        if (address(reserveVault) == address(0)) return 0;
-        return reserveVault.convertToAssets(reserveVault.balanceOf(address(this)));
-    }
-
-    /// @notice NAV — main vault assets attributable to this controller.
-    function vaultAssets() public view returns (uint256) {
-        return VAULT.convertToAssets(VAULT.balanceOf(address(this)));
-    }
-
-    /// @notice Maximum amount the controller can currently pull out of the vault.
-    function vaultMaxWithdraw() external view returns (uint256) {
-        // Full deliverable allowing loss realisation — a redeemer may exit
-        // during a vault deficit and take the loss (passed through in
-        // {withdrawFromTranche}); the reserve is not a redemption source.
-        return VAULT.maxWithdraw(address(this), MAX_BPS);
-    }
 
     /// @notice Number of registered Tranches.
     function tranchesLength() external view returns (uint256) {
@@ -346,8 +303,49 @@ contract TrancheController is Authorized {
         return tranchesByPriority;
     }
 
-    function isSolvent() external view returns (bool) {
-        return vaultAssets() + reserveAssets() >= totalClaims();
+    /// @notice Whether `_tranche` is a registered Tranche. Consulted by the
+    ///         Hook to gate per-Tranche rate-limit consumption.
+    function isTranche(address _tranche) external view returns (bool) {
+        return tranches[_tranche].registered;
+    }
+
+    function isFrozen(address _tranche) external view returns (bool) {
+        return tranches[_tranche].frozen;
+    }
+
+    /// @notice Live NAV for a Tranche — its NAV source. Reverts if the Tranche
+    ///         is not registered.
+    function liveAssets(address _tranche) external view returns (uint256) {
+        Tranche memory tranche = tranches[_tranche];
+        require(tranche.registered, "!tranche");
+        return _liveAssetsView(tranche);
+    }
+
+    /// @notice Excess recorded at settlement awaiting realisation via
+    ///         {realizeExcess}. Not part of the Tranche's live NAV.
+    function pendingExcess(address _tranche) external view returns (uint256) {
+        return tranches[_tranche].pendingExcess;
+    }
+
+    /// @notice NAV — main vault assets attributable to this controller.
+    function vaultAssets() public view returns (uint256) {
+        return VAULT.convertToAssets(VAULT.balanceOf(address(this)));
+    }
+
+    /// @notice Maximum amount the controller can currently pull out of the vault.
+    function vaultMaxWithdraw() external view returns (uint256) {
+        return VAULT.convertToAssets(VAULT.maxRedeem(address(this)));
+    }
+
+    /// @notice Reserve held in the 4626 vault.
+    function reserveAssets() public view returns (uint256) {
+        if (address(reserveVault) == address(0)) return 0;
+        return reserveVault.convertToAssets(reserveVault.balanceOf(address(this)));
+    }
+
+    /// @notice Total assets backing Tranche claims: main-vault NAV plus reserve.
+    function backingAssets() public view returns (uint256) {
+        return vaultAssets() + reserveAssets();
     }
 
     /// @notice Sum of every Tranche's current claim — live NAV plus unrealised
@@ -358,6 +356,29 @@ contract TrancheController is Authorized {
         for (uint256 i = 0; i < trancheAddresses.length; ++i) {
             Tranche memory tranche = tranches[trancheAddresses[i]];
             total += _liveAssetsView(tranche) + tranche.pendingExcess;
+        }
+    }
+
+    /// @notice Coverage for `_tranche` after senior Tranches consume backing assets.
+    /// @return claim Full current claim: live NAV plus pending excess.
+    /// @return covered Amount of `_tranche` claim covered by current backing.
+    function trancheCoverage(address _tranche) external view returns (uint256 claim, uint256 covered) {
+        require(tranches[_tranche].registered, "!tranche");
+
+        uint256 remainingBacking = backingAssets();
+        address[] memory trancheAddresses = tranchesByPriority;
+
+        for (uint256 i = 0; i < trancheAddresses.length; ++i) {
+            address trancheAddress = trancheAddresses[i];
+            Tranche memory tranche = tranches[trancheAddress];
+            uint256 trancheClaim = _liveAssetsView(tranche) + tranche.pendingExcess;
+            uint256 trancheCovered = _min(trancheClaim, remainingBacking);
+
+            if (trancheAddress == _tranche) {
+                return (trancheClaim, trancheCovered);
+            }
+
+            remainingBacking -= trancheCovered;
         }
     }
 
@@ -508,8 +529,7 @@ contract TrancheController is Authorized {
 
             // 4a. The reserve (equity first-loss buffer) absorbs first, drawn
             //     into the main vault.
-            uint256 reserveAvailable = reserveAssets();
-            uint256 fromReserve = _min(loss, reserveAvailable);
+            uint256 fromReserve = _min(loss, reserveAssets());
             if (fromReserve > 0) {
                 _drawReserveToMain(fromReserve);
                 loss -= fromReserve;

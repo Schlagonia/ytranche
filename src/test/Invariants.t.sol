@@ -70,6 +70,23 @@ contract InvariantsTest is Setup {
         assertFalse(controller.isFrozen(address(aTranche)));
     }
 
+    function test_inv_trancheCoverage_isSeniorFirst() public {
+        _depositA(alice, 70e18);
+        _depositB(bob, 20e18);
+        _fundReserve(10e18);
+        _simulateRiskyPnL(-int256(35e18));
+
+        assertEq(controller.backingAssets(), 65e18, "backing");
+
+        (uint256 aClaim, uint256 aCovered) = controller.trancheCoverage(address(aTranche));
+        assertEq(aClaim, 70e18, "A claim");
+        assertEq(aCovered, 65e18, "A covered");
+
+        (uint256 bClaim, uint256 bCovered) = controller.trancheCoverage(address(bTranche));
+        assertEq(bClaim, 20e18, "B claim");
+        assertEq(bCovered, 0, "B covered");
+    }
+
     function test_inv_cooledShares_remainEconomicallyActive() public {
         _depositB(alice, 20e18);
         uint256 nav0 = controller.liveAssets(address(bTranche));
@@ -194,8 +211,8 @@ contract InvariantsTest is Setup {
     }
 
     /// @dev Once the reserve is exhausted, loss spills into Tranches in reverse
-    ///      priority, eating each Tranche's pending excess before its baseline
-    ///      (and without freezing while only pending is lost).
+    ///      priority, eating each Tranche's pending excess before its baseline.
+    ///      Current freeze policy still freezes any Tranche that absorbs loss.
     function test_inv_loss_pendingAbsorbsAtTranchePriority() public {
         _depositA(alice, 70e18);
         _depositB(bob, 20e18);

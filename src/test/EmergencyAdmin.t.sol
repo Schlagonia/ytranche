@@ -6,7 +6,8 @@ import {Setup} from "./utils/Setup.sol";
 import {ITrancheStrategy} from "../interfaces/ITrancheStrategy.sol";
 
 /// @notice Central {EmergencyAdmin} — halts the main vault and strategies through
-///   the Yearn V3 primitives. Gated by EMERGENCY_ROLE (governance is superuser).
+///   the Yearn V3 primitives. Shutdowns are management-gated; emergency actions
+///   are emergency-gated. Governance is superuser.
 contract EmergencyAdminTest is Setup {
     /// @dev Grant EMERGENCY_ROLE to `_who` (cache the role id before the prank so
     ///      the view call doesn't consume it).
@@ -52,8 +53,7 @@ contract EmergencyAdminTest is Setup {
     function test_shutdownVault_blocksDepositsAllowsWithdrawals() public {
         uint256 shares = _depositA(alice, 50e18);
 
-        _grantEmergency(carol);
-        vm.prank(carol);
+        vm.prank(management);
         emergencyAdmin.shutdownVault(address(mainVault));
 
         // Deposits blocked once shut down.
@@ -78,8 +78,7 @@ contract EmergencyAdminTest is Setup {
     }
 
     function test_shutdownStrategy() public {
-        _grantEmergency(carol);
-        vm.prank(carol);
+        vm.prank(management);
         emergencyAdmin.shutdownStrategy(address(aTranche));
 
         assertTrue(ITrancheStrategy(address(aTranche)).isShutdown(), "A shut down");
@@ -112,7 +111,7 @@ contract EmergencyAdminTest is Setup {
         assertEq(mainVault.strategies(address(riskyStrategy)).max_debt, 0, "max debt zeroed");
     }
 
-    function test_onlyEmergencyOrGovernance() public {
+    function test_onlyAuthorizedRolesOrGovernance() public {
         // Unprivileged caller is rejected on every entry point.
         vm.startPrank(bob);
         vm.expectRevert(bytes("!authorized"));
@@ -125,6 +124,14 @@ contract EmergencyAdminTest is Setup {
         emergencyAdmin.emergencyWithdraw(address(aTranche), 1e18);
         vm.expectRevert(bytes("!authorized"));
         emergencyAdmin.zeroMaxDebtForStrategy(address(mainVault), address(riskyStrategy));
+        vm.stopPrank();
+
+        _grantEmergency(carol);
+        vm.startPrank(carol);
+        vm.expectRevert(bytes("!authorized"));
+        emergencyAdmin.shutdownVault(address(mainVault));
+        vm.expectRevert(bytes("!authorized"));
+        emergencyAdmin.shutdownStrategy(address(aTranche));
         vm.stopPrank();
 
         // Governance (the Authorizer superuser) can act without holding the role.

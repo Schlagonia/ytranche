@@ -25,9 +25,10 @@ interface ITrancheController {
     function reserveAssets() external view returns (uint256);
     function vaultAssets() external view returns (uint256);
     function vaultMaxWithdraw() external view returns (uint256);
+    function backingAssets() external view returns (uint256);
+    function trancheCoverage(address tranche) external view returns (uint256 claim, uint256 covered);
     function liveAssets(address tranche) external view returns (uint256);
     function pendingExcess(address tranche) external view returns (uint256);
     function isFrozen(address tranche) external view returns (bool);
     function isTranche(address tranche) external view returns (bool);
-    function isSolvent() external view returns (bool);
 }
