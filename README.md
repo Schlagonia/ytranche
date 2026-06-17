@@ -93,7 +93,8 @@ is also called by each Tranche strategy.
 
 It controls:
 
-- Aggregate deposit limits per Tranche and for the main vault.
+- Aggregate deposit limits per Tranche and for the main vault. Tranche limits
+  count live assets plus pending excess.
 - Rolling deposit and withdrawal rate limits.
 - Main-vault direct-deposit gating through `open` and `allowed`.
 - Withdrawal caps based on main-vault deliverable assets.

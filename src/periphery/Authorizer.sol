@@ -38,10 +38,13 @@ import {Roles} from "./Roles.sol";
  *          function b() external hasRole(THIS_MANAGER_ROLE) {}      // role strictly
  *      }
  *
- *  Governance and default admin are each single-holder and move via separate
- *  two-step handoffs expressed with the native role-admin chain. The {grantRole}
- *  override finalizes each swap by clearing the matching pending role and
- *  revoking the prior holder. Role renouncing is disabled.
+ *  Governance and default admin are each single-holder roles. They begin equal,
+ *  then can diverge through separate two-step handoffs expressed with the native
+ *  role-admin chain: the live holder grants the matching pending role, and the
+ *  pending holder claims the live role through {grantRole}. The claim path
+ *  rejects no-op/self claims, clears the pending role, revokes the prior live
+ *  holder, and asserts the role stayed single-holder. Role renouncing is
+ *  disabled; removals must go through the relevant role admin via {revokeRole}.
  */
 contract Authorizer is Roles, IAuthorizer, AccessControlEnumerable {
     bytes32 public constant PENDING_GOVERNANCE_ROLE = keccak256("PENDING_GOVERNANCE_ROLE");
@@ -57,8 +60,8 @@ contract Authorizer is Roles, IAuthorizer, AccessControlEnumerable {
         _grantRole(GOVERNANCE_ROLE, _governance);
         _grantRole(MANAGEMENT_ROLE, _management);
 
-        // Two-step handoffs: current holder proposes a pending holder, who then
-        // claims the live role (finalized in the {grantRole} override).
+        // Two-step handoffs: the current holder proposes a pending holder, who
+        // then claims the live role through the guarded {grantRole} path.
         _setRoleAdmin(PENDING_GOVERNANCE_ROLE, GOVERNANCE_ROLE);
         _setRoleAdmin(GOVERNANCE_ROLE, PENDING_GOVERNANCE_ROLE);
         _setRoleAdmin(PENDING_DEFAULT_ADMIN_ROLE, DEFAULT_ADMIN_ROLE);
@@ -86,20 +89,35 @@ contract Authorizer is Roles, IAuthorizer, AccessControlEnumerable {
         return super.hasRole(role, account);
     }
 
-    /// @dev Finalize the two-step governance / default-admin handoffs. Only the
-    ///      pending holder can claim the live role; doing so clears the pending
-    ///      role and revokes the prior live holder.
+    /// @dev Finalize governance / default-admin handoffs and forward all other
+    ///      roles to the normal AccessControl grant path.
     function grantRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
-        super.grantRole(role, account);
         if (role == GOVERNANCE_ROLE) {
-            address previous = getRoleMember(GOVERNANCE_ROLE, 0);
-            _revokeRole(PENDING_GOVERNANCE_ROLE, account);
-            _revokeRole(GOVERNANCE_ROLE, previous);
-        } else if (role == DEFAULT_ADMIN_ROLE) {
-            address previous = getRoleMember(DEFAULT_ADMIN_ROLE, 0);
-            _revokeRole(PENDING_DEFAULT_ADMIN_ROLE, account);
-            _revokeRole(DEFAULT_ADMIN_ROLE, previous);
+            _grantTwoStepRole(role, account, PENDING_GOVERNANCE_ROLE);
+            return;
         }
+        if (role == DEFAULT_ADMIN_ROLE) {
+            _grantTwoStepRole(role, account, PENDING_DEFAULT_ADMIN_ROLE);
+            return;
+        }
+
+        super.grantRole(role, account);
+    }
+
+    /// @dev Claim a single-holder role through its pending role. The pending
+    ///      role is the admin for `role`, so `super.grantRole` still enforces
+    ///      that only the nominated account can complete the handoff.
+    function _grantTwoStepRole(bytes32 role, address account, bytes32 pendingRole) internal {
+        require(!hasRole(role, account), "already live role");
+        require(getRoleMemberCount(role) == 1, "bad core role count");
+
+        address previous = getRoleMember(role, 0);
+        super.grantRole(role, account);
+        _revokeRole(pendingRole, account);
+        _revokeRole(role, previous);
+
+        require(getRoleMemberCount(role) == 1, "bad core role count");
+        require(getRoleMember(role, 0) == account, "bad core role count");
     }
 
     /// @notice Update the admin role for a non-core role.

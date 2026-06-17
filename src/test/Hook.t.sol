@@ -79,6 +79,22 @@ contract HookTest is Setup {
         vm.stopPrank();
     }
 
+    function test_trancheDepositLimit_countsPendingExcess() public {
+        _depositA(alice, 70e18);
+        _depositB(bob, 20e18);
+        skip(SECONDS_PER_YEAR);
+        _simulateRiskyPnL(int256(54e17));
+        _settle();
+
+        assertApproxEqAbs(controller.liveAssets(address(bTranche)), 20_850_000_000_000_000_000, 1e15, "B live");
+        assertApproxEqAbs(controller.pendingExcess(address(bTranche)), 630_000_000_000_000_000, 1e15, "B pending");
+
+        vm.prank(management);
+        hook.setDepositLimit(address(bTranche), 21_500_000_000_000_000_000);
+
+        assertApproxEqAbs(ITrancheStrategy(address(bTranche)).maxDeposit(carol), 20_000_000_000_000_000, 1e15);
+    }
+
     function test_mainVaultDepositLimit_capsAggregateExposure() public {
         vm.prank(management);
         hook.setDepositLimit(address(mainVault), 10e18);

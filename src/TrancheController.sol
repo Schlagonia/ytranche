@@ -531,8 +531,8 @@ contract TrancheController is Authorized {
             //     into the main vault.
             uint256 fromReserve = _min(loss, reserveAssets());
             if (fromReserve > 0) {
-                _drawReserveToMain(fromReserve);
-                loss -= fromReserve;
+                uint256 drawn = _drawReserveToMain(fromReserve);
+                loss -= _min(loss, drawn);
             }
 
             // 4b. Then Tranches in REVERSE priority (junior first). Each Tranche
@@ -578,12 +578,20 @@ contract TrancheController is Authorized {
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @dev Pull `_amount` from the reserve vault and deposit it into the
-     *      main vault.
+     * @dev Redeem reserve-vault shares and deposit the received assets into the
+     *      main vault. Uses share-exact redemption for full drains so 4626
+     *      rounding cannot make asset-exact `withdraw` revert.
      */
-    function _drawReserveToMain(uint256 _amount) internal {
-        reserveVault.withdraw(_amount, address(this), address(this));
-        VAULT.deposit(_amount, address(this));
+    function _drawReserveToMain(uint256 _amount) internal returns (uint256 received) {
+        uint256 sharesToRedeem = _min(reserveVault.maxRedeem(address(this)), reserveVault.previewWithdraw(_amount));
+
+        uint256 balanceBefore = ASSET.balanceOf(address(this));
+        reserveVault.redeem(sharesToRedeem, address(this), address(this));
+        received = ASSET.balanceOf(address(this)) - balanceBefore;
+
+        if (received > 0) {
+            VAULT.deposit(received, address(this));
+        }
     }
 
     /*//////////////////////////////////////////////////////////////

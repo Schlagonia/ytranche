@@ -87,6 +87,40 @@ contract AuthorizerTest is Setup {
         assertTrue(authorizer.hasRole(mgmtRole, eve), "new default admin grants roles");
     }
 
+    function test_selfPendingGovernanceCannotBrickGovernance() public {
+        bytes32 govRole = authorizer.GOVERNANCE_ROLE();
+        bytes32 pendingRole = authorizer.PENDING_GOVERNANCE_ROLE();
+
+        vm.prank(governance);
+        authorizer.grantRole(pendingRole, governance);
+        assertEq(authorizer.pendingGovernance(), governance, "self pending governance set");
+
+        vm.prank(governance);
+        vm.expectRevert(bytes("already live role"));
+        authorizer.grantRole(govRole, governance);
+
+        assertEq(authorizer.governance(), governance, "governance still live");
+        assertEq(authorizer.getRoleMemberCount(govRole), 1, "one governance holder");
+        assertTrue(authorizer.hasRole(govRole, governance), "governance retained");
+    }
+
+    function test_selfPendingDefaultAdminCannotBrickDefaultAdmin() public {
+        bytes32 defaultAdminRole = authorizer.DEFAULT_ADMIN_ROLE();
+        bytes32 pendingRole = authorizer.PENDING_DEFAULT_ADMIN_ROLE();
+
+        vm.prank(governance);
+        authorizer.grantRole(pendingRole, governance);
+        assertEq(authorizer.pendingDefaultAdmin(), governance, "self pending admin set");
+
+        vm.prank(governance);
+        vm.expectRevert(bytes("already live role"));
+        authorizer.grantRole(defaultAdminRole, governance);
+
+        assertEq(authorizer.defaultAdmin(), governance, "default admin still live");
+        assertEq(authorizer.getRoleMemberCount(defaultAdminRole), 1, "one default admin holder");
+        assertTrue(authorizer.hasRole(defaultAdminRole, governance), "default admin retained");
+    }
+
     function test_governanceCannotBeGrantedDirectlyOrRenounced() public {
         bytes32 govRole = authorizer.GOVERNANCE_ROLE();
         vm.startPrank(governance);

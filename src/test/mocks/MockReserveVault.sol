@@ -11,6 +11,7 @@ contract MockReserveVault is ERC20 {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable underlying;
+    bool public revertWithdraw;
 
     constructor(address asset_) ERC20("MockReserveVault", "mrv") {
         underlying = IERC20(asset_);
@@ -34,6 +35,13 @@ contract MockReserveVault is ERC20 {
         return supply == 0 ? shares : (shares * totalAssets()) / supply;
     }
 
+    function previewWithdraw(uint256 assets) public view returns (uint256) {
+        uint256 supply = totalSupply();
+        uint256 total = totalAssets();
+        if (supply == 0 || total == 0) return assets;
+        return (assets * supply + total - 1) / total;
+    }
+
     function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
         shares = convertToShares(assets);
         underlying.safeTransferFrom(msg.sender, address(this), assets);
@@ -41,6 +49,7 @@ contract MockReserveVault is ERC20 {
     }
 
     function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares) {
+        require(!revertWithdraw, "withdraw disabled");
         shares = convertToShares(assets);
         if (msg.sender != owner) _spendAllowance(owner, msg.sender, shares);
         _burn(owner, shares);
@@ -56,6 +65,10 @@ contract MockReserveVault is ERC20 {
 
     function maxWithdraw(address owner) external view returns (uint256) {
         return convertToAssets(balanceOf(owner));
+    }
+
+    function setRevertWithdraw(bool _revertWithdraw) external {
+        revertWithdraw = _revertWithdraw;
     }
 
     /// @notice Simulate reserve yield in tests by minting `amount` underlying into this vault.

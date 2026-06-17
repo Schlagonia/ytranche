@@ -178,7 +178,7 @@ contract Hook is IHook, Authorized {
         // ingress — a Tranche deposit routes straight into the main vault, so it
         // can never exceed what the main vault will accept.
         return _min(
-            _vaultDepositLimit(_tranche, CONTROLLER.liveAssets(_tranche)),
+            _vaultDepositLimit(_tranche, CONTROLLER.liveAssets(_tranche) + CONTROLLER.pendingExcess(_tranche)),
             _vaultDepositLimit(address(VAULT), CONTROLLER.vaultAssets())
         );
     }

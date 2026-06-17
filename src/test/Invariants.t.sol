@@ -70,6 +70,19 @@ contract InvariantsTest is Setup {
         assertFalse(controller.isFrozen(address(aTranche)));
     }
 
+    function test_inv_fullReserveDrainUsesRedeem() public {
+        _depositA(alice, 70e18);
+        _fundReserve(10e18);
+        reserveVault.setRevertWithdraw(true);
+
+        _simulateRiskyPnL(-int256(10e18));
+        _settle();
+
+        assertEq(controller.reserveAssets(), 0, "reserve fully redeemed");
+        assertEq(controller.liveAssets(address(aTranche)), 70e18, "A whole");
+        assertFalse(controller.isFrozen(address(aTranche)), "A not frozen");
+    }
+
     function test_inv_trancheCoverage_isSeniorFirst() public {
         _depositA(alice, 70e18);
         _depositB(bob, 20e18);
