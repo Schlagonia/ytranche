@@ -194,6 +194,11 @@ contract Hook is IHook, Authorized {
     //////////////////////////////////////////////////////////////*/
 
     function available_deposit_limit(address _receiver) external view returns (uint256) {
+        // No limits for the reserve vault deposits.
+        if (_receiver == address(CONTROLLER) && CONTROLLER.reserveDepositInProgress()) {
+            return type(uint256).max;
+        }
+
         // Main-vault gate. The controller itself (Tranche-routed deposits) is
         // always permitted — end users are already gated at the Tranche level.
         if (_receiver != address(CONTROLLER) && !open && !allowed[_receiver]) {
@@ -220,13 +225,21 @@ contract Hook is IHook, Authorized {
     ///         caller check is needed — a caller can only ever fill its own
     ///         bucket, never the main vault's or another Tranche's.
     function post_deposit(
-        address, /*_sender*/
-        address, /*_receiver*/
+        address _sender,
+        address _receiver,
         uint256 _assets,
         uint256 /*_shares*/
     )
         external
     {
+        // Don't consume the rate limit if the deposit is from the reserve vault.
+        if (
+            msg.sender == address(VAULT) && _sender == address(CONTROLLER) && _receiver == address(CONTROLLER)
+                && CONTROLLER.reserveDepositInProgress()
+        ) {
+            return;
+        }
+
         _consume(depositRateLimit[msg.sender], _assets);
     }
 

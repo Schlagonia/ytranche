@@ -24,15 +24,8 @@ import {IHook} from "./interfaces/IHook.sol";
  *  per-flow caps (returned in asset units) and `min`s them with whatever
  *  local constraints it has (cooldown availability for the locked variant).
  *
- *  The Hook reference is **settable** by management — governance can rotate
+ *  The Hook reference is **settable** by governance — governance can rotate
  *  to a new Hook implementation without redeploying the Tranche.
- *
- *  Inherits the periphery {BaseHooks}. Per-flow metering is delegated to the
- *  Hook through the post-deposit / post-withdraw hooks, reusing the very same
- *  `post_deposit` / `post_withdraw` surface the main vault calls. The per-Tranche
- *  open / allow-list gate is the inherited {BaseHealthCheck} one (the Hook only
- *  gates the main vault), and the {BaseHealthCheck} report limits are left
- *  active — management configures them per Tranche.
  */
 contract TrancheStrategy is BaseHooks {
     using SafeERC20 for IERC20;
@@ -50,6 +43,9 @@ contract TrancheStrategy is BaseHooks {
     /// @notice Central economic controller (NAV source, settlement, waterfall).
     ITrancheController public immutable CONTROLLER;
 
+    /// @notice Address allowed to rotate the Hook.
+    address public immutable GOVERNANCE;
+
     /*//////////////////////////////////////////////////////////////
                                STORAGE
     //////////////////////////////////////////////////////////////*/
@@ -61,11 +57,12 @@ contract TrancheStrategy is BaseHooks {
                              CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor(address _asset, string memory _name, address _controller, address _hook)
+    constructor(address _asset, string memory _name, address _controller, address _hook, address _governance)
         BaseHealthCheck(_asset, _name)
     {
-        require(_controller != address(0) && _hook != address(0), "ZERO");
+        require(_controller != address(0) && _hook != address(0) && _governance != address(0), "ZERO");
         CONTROLLER = ITrancheController(_controller);
+        GOVERNANCE = _governance;
         hook = IHook(_hook);
 
         // Pre-approve the controller to pull underlying during `_deployFunds`.
@@ -76,8 +73,9 @@ contract TrancheStrategy is BaseHooks {
                           MANAGEMENT CONFIG
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Rotate to a new Hook contract. Management only.
-    function setHook(address _newHook) external onlyManagement {
+    /// @notice Rotate to a new Hook contract. Governance only.
+    function setHook(address _newHook) external {
+        require(msg.sender == GOVERNANCE, "!governance");
         require(_newHook != address(0), "ZERO hook");
         hook = IHook(_newHook);
 
@@ -117,7 +115,7 @@ contract TrancheStrategy is BaseHooks {
     /// @dev Meter the withdrawal against this Tranche's rolling rate limit
     ///      through the same Hook surface the main vault calls. Runs after the
     ///      shares burn.
-    function _postWithdrawHook(uint256 _assets, uint256 _shares, address _receiver, address _owner, uint256 _maxLoss)
+    function _postWithdrawHook(uint256 _assets, uint256 _shares, address _receiver, address _owner, uint256)
         internal
         virtual
         override

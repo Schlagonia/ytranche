@@ -9,9 +9,8 @@ import {Authorized} from "./Authorized.sol";
 /**
  * @title EmergencyAdmin
  * @author ytranche
- * @notice Single, central entry point for every emergency halt in the Tranche
- *         system. A caller with the relevant role names the target to halt —
- *         the contract holds no addresses of its own, it just drives the underlying Yearn V3
+ * @notice Single, central entry point for every emergency halts.
+ *         A caller with the relevant role names the target to halt
  *         primitives:
  *           - {pauseVault}        — `setPaused(true)` on a vault OR a strategy
  *           - {shutdownVault}     — `shutdown_vault()` on the main vault
@@ -29,14 +28,14 @@ import {Authorized} from "./Authorized.sol";
 contract EmergencyAdmin is Authorized {
     constructor(address _authorizer) Authorized(_authorizer) {}
 
-    /// @notice Pause a target — blocks its flows. Works for both the main vault
-    ///         and any strategy (both expose `setPaused(bool)`). Reversible by
+    /// @notice Pause a target — blocks its flows. Works for both the vaults
+    ///         and strategies (both expose `setPaused(bool)`). Reversible by
     ///         the target's own pause authority.
     function pauseVault(address _target) external isAuthorized(EMERGENCY_ROLE) {
         IVault(_target).setPaused(true);
     }
 
-    /// @notice Shut the main vault down — blocks deposits, leaves withdrawals
+    /// @notice Shut a vault down — blocks deposits, leaves withdrawals
     ///         open. Irreversible.
     function shutdownVault(address _vault) external isAuthorized(MANAGEMENT_ROLE) {
         IVault(_vault).shutdown_vault();

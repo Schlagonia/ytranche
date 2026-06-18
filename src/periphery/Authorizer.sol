@@ -24,9 +24,7 @@ import {Roles} from "./Roles.sol";
  *  default admin start as the same address, then can diverge.
  *
  *  Role-admin chain: MANAGEMENT_ROLE administers KEEPER_ROLE and EMERGENCY_ROLE
- *  (keeper / emergency membership can be delegated to a manager). Governance
- *  does not hold MANAGEMENT_ROLE by default; it only satisfies management-gated
- *  runtime checks through {isAuthorized}.
+ *  (keeper / emergency membership can be delegated to a manager).
  *
  *  ex:
  *      contract MyContract is Authorized {

@@ -115,6 +115,32 @@ contract HookTest is Setup {
         vm.stopPrank();
     }
 
+    function test_reserveSettlementBypassesMainVaultDepositLimit() public {
+        _depositA(alice, 70e18);
+        _fundReserve(10e18);
+        _simulateRiskyPnL(-int256(5e18));
+
+        uint256 vaultAssetsAfterLoss = controller.vaultAssets();
+        vm.prank(management);
+        hook.setDepositLimit(address(mainVault), vaultAssetsAfterLoss);
+
+        assertEq(hook.available_deposit_limit(address(controller)), 0, "normal ingress capped");
+        assertEq(ITrancheStrategy(address(aTranche)).maxDeposit(bob), 0, "tranche ingress capped");
+
+        _airdrop(bob, 1e18);
+        vm.startPrank(bob);
+        asset.approve(address(aTranche), 1e18);
+        vm.expectRevert();
+        ITrancheStrategy(address(aTranche)).deposit(1e18, bob);
+        vm.stopPrank();
+
+        _settle();
+
+        assertFalse(controller.reserveDepositInProgress(), "reserve flag cleared");
+        assertApproxEqAbs(controller.vaultAssets(), 70e18, 1e12, "reserve replenished main vault");
+        assertApproxEqAbs(controller.reserveAssets(), 5e18, 1e12, "reserve drew only the loss");
+    }
+
     /// @dev A Tranche's own maxDeposit reflects the shared main-vault ingress
     ///      limit (deposits route straight into the main vault), and the limit
     ///      is shared across Tranches.
@@ -147,6 +173,33 @@ contract HookTest is Setup {
         vm.expectRevert();
         ITrancheStrategy(address(aTranche)).deposit(4e18, bob);
         vm.stopPrank();
+    }
+
+    function test_reserveSettlementBypassesMainVaultDepositRateLimit() public {
+        vm.startPrank(management);
+        hook.setRateLimitWindow(1 hours);
+        hook.setDepositRateLimit(address(mainVault), uint128(70e18));
+        vm.stopPrank();
+
+        _depositA(alice, 70e18);
+        _fundReserve(10e18);
+        _simulateRiskyPnL(-int256(5e18));
+
+        assertEq(hook.available_deposit_limit(address(controller)), 0, "normal ingress rate-capped");
+        assertEq(ITrancheStrategy(address(aTranche)).maxDeposit(bob), 0, "tranche ingress rate-capped");
+
+        _airdrop(bob, 1e18);
+        vm.startPrank(bob);
+        asset.approve(address(aTranche), 1e18);
+        vm.expectRevert();
+        ITrancheStrategy(address(aTranche)).deposit(1e18, bob);
+        vm.stopPrank();
+
+        _settle();
+
+        assertFalse(controller.reserveDepositInProgress(), "reserve flag cleared");
+        assertApproxEqAbs(controller.vaultAssets(), 70e18, 1e12, "reserve replenished main vault");
+        assertApproxEqAbs(controller.reserveAssets(), 5e18, 1e12, "reserve drew only the loss");
     }
 
     function test_gatedVault_onlyAllowedCanDeposit() public {

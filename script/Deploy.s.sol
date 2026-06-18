@@ -44,11 +44,11 @@ contract DeployTrancheSystem is Script {
         // deployment if the broadcaster is not also management.
         controller.setReserveVault(reserveVault);
 
-        TrancheStrategy aTranche = new TrancheStrategy(asset, "Tranche A", address(controller), address(hook));
+        TrancheStrategy aTranche = new TrancheStrategy(asset, "Tranche A", address(controller), address(hook), gov);
         LockedTrancheStrategy bTranche =
-            new LockedTrancheStrategy(asset, "Tranche B", address(controller), address(hook), 14 days, 7 days);
+            new LockedTrancheStrategy(asset, "Tranche B", address(controller), address(hook), gov, 14 days, 7 days);
         LockedTrancheStrategy eTranche =
-            new LockedTrancheStrategy(asset, "Tranche E", address(controller), address(hook), 14 days, 7 days);
+            new LockedTrancheStrategy(asset, "Tranche E", address(controller), address(hook), gov, 14 days, 7 days);
 
         // Per-Tranche economic config (annualised target BPS, excess-share BPS)
         // is supplied at registration time. Numbers mirror the test defaults.

@@ -23,6 +23,7 @@ interface ITrancheController {
     // Views.
     function VAULT() external view returns (address);
     function reserveAssets() external view returns (uint256);
+    function reserveDepositInProgress() external view returns (bool);
     function vaultAssets() external view returns (uint256);
     function vaultMaxWithdraw() external view returns (uint256);
     function backingAssets() external view returns (uint256);
@@ -31,4 +32,5 @@ interface ITrancheController {
     function pendingExcess(address tranche) external view returns (uint256);
     function isFrozen(address tranche) external view returns (bool);
     function isTranche(address tranche) external view returns (bool);
+    function getTranchesByPriority() external view returns (address[] memory);
 }

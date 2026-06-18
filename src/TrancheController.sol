@@ -10,7 +10,7 @@ import {Authorized} from "./periphery/Authorized.sol";
 
 /**
  * @title TrancheController
- * @author ytranche
+ * @author Yearn
  * @notice
  *  Economic source of truth for the Tranche system. Every Tranche shares
  *  the same `Tranche` struct — a target rate, an excess-share BPS, a
@@ -24,18 +24,13 @@ import {Authorized} from "./periphery/Authorized.sol";
  *  per-Tranche targets, then in reverse to absorb losses (junior first,
  *  senior last).
  *
- *  Reserve is mandatory and lives in any same-asset 4626 vault. Reserve
- *  absorbs loss before any Tranche baseline (unrealised pending excess
- *  is clawed back even earlier).
+ *  There is an option reserve and lives in any same-asset 4626 vault. Reserve
+ *  absorbs loss before any Tranche.
  *
  *  Excess profit recorded at settlement is NOT immediately reflected in
  *  a Tranche's live NAV — it sits in `pendingExcess` until the Tranche
  *  strategy calls {realizeExcess} during its `report()`, letting the
  *  strategy lock the chunky profit over its unlock period.
- *
- *  Defaults at deployment: no Tranches registered. Governance calls
- *  `registerTranche` once per Tranche, supplying its target rate and
- *  excess-share BPS up-front.
  */
 contract TrancheController is Authorized {
     using SafeERC20 for IERC20;
@@ -118,6 +113,9 @@ contract TrancheController is Authorized {
     /// @notice Optional same-asset 4626 vault holding the reserve buffer
     ///         (e.g. sUSDS / yvUSDC). Earns the underlying yield.
     IERC4626 public reserveVault;
+
+    /// @notice True only while reserve assets are being moved into the main vault.
+    bool public reserveDepositInProgress;
 
     /**
      * @notice Tranches in priority order — senior first, junior last.
@@ -441,8 +439,8 @@ contract TrancheController is Authorized {
     /**
      * @notice Realise the calling Tranche's pending excess into its
      *         baseline. Called by the Tranche during `report()` so the
-     *         chunky settlement profit is recorded — and locked over the
-     *         strategy's profit-unlock period — instead of surfacing
+     *         chunky settlement profit is recorded and locked over the
+     *         strategy's profit-unlock period instead of surfacing
      *         immediately in `totalAssets`.
      * @return realized Amount moved from pending into the baseline.
      */
@@ -504,17 +502,12 @@ contract TrancheController is Authorized {
                 address trancheAddress = tranchesByPriority[i];
                 Tranche storage tranche = tranches[trancheAddress];
 
-                // A strictly profitable settle means the vault is earning
-                // beyond every live target again — resume accrual for any
-                // Tranche frozen by an earlier loss. `lastAccrual` was just
-                // checkpointed in the accrual loop above.
+                // Resume accrual for any Tranche frozen by an earlier loss.
                 if (tranche.frozen) {
                     tranche.frozen = false;
-                    emit TrancheFrozenSet(trancheAddress, false);
                 }
 
-                // Record this Tranche's slice of the excess as pending — it
-                // enters live NAV only when the Tranche calls {realizeExcess}.
+                // Record this Tranche's slice of the excess as pending.
                 uint256 share = (excess * tranche.excessShareBps) / MAX_BPS;
                 if (share > 0) {
                     tranche.pendingExcess += share;
@@ -536,11 +529,8 @@ contract TrancheController is Authorized {
             }
 
             // 4b. Then Tranches in REVERSE priority (junior first). Each Tranche
-            //     absorbs from its total claim — pending excess first (earned-
-            //     but-unrealised yield), then baseline. Pending excess is part
-            //     of the claim, so the loss order is constant regardless of
-            //     whether the excess has been realised, and any loss — pending
-            //     or baseline — freezes the Tranche.
+            //     absorbs from its total claim, pending excess first, then baseline.
+            //     Any loss to the Tranche (pending and/or baseline) freezes its baseline accrual
             for (uint256 i = numberOfTranches; i > 0; --i) {
                 if (loss == 0) break;
 
@@ -560,7 +550,6 @@ contract TrancheController is Authorized {
                 }
 
                 // Any loss to the Tranche (pending and/or baseline) freezes it
-                // and is reported as one combined amount.
                 uint256 absorbed = fromPending + fromBaseline;
                 if (absorbed > 0) {
                     tranche.frozen = true;
@@ -590,7 +579,9 @@ contract TrancheController is Authorized {
         received = ASSET.balanceOf(address(this)) - balanceBefore;
 
         if (received > 0) {
+            reserveDepositInProgress = true;
             VAULT.deposit(received, address(this));
+            reserveDepositInProgress = false;
         }
     }
 
