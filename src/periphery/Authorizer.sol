@@ -41,18 +41,19 @@ import {Roles} from "./Roles.sol";
  *  Governance and default admin are each single-holder roles. They begin equal,
  *  then can diverge through separate two-step handoffs expressed with the native
  *  role-admin chain: the live holder grants the matching pending role, and the
- *  pending holder claims the live role through {grantRole}. The claim path
- *  rejects no-op/self claims, clears the pending role, revokes the prior live
- *  holder, and asserts the role stayed single-holder. Role renouncing is
- *  disabled; removals must go through the relevant role admin via {revokeRole}.
+ *  pending holder claims the live role through {grantRole}. Pending core roles
+ *  are single-holder. The claim path rejects no-op/self claims, clears the
+ *  pending role, revokes the prior live holder, and asserts the role stayed
+ *  single-holder. Role renouncing is disabled; removals must go through the
+ *  relevant role admin via {revokeRole}.
  */
 contract Authorizer is Roles, IAuthorizer, AccessControlEnumerable {
     bytes32 public constant PENDING_GOVERNANCE_ROLE = keccak256("PENDING_GOVERNANCE_ROLE");
     bytes32 public constant PENDING_DEFAULT_ADMIN_ROLE = keccak256("PENDING_DEFAULT_ADMIN_ROLE");
 
     constructor(address _governance, address _management) {
-        require(_governance != address(0), "ZERO governance");
-        require(_management != address(0), "ZERO management");
+        require(_governance != address(0), "ZERO_ADDRESS");
+        require(_management != address(0), "ZERO_ADDRESS");
 
         // Governance is the runtime superuser. The default admin controls role
         // membership / role-admin plumbing. They begin equal, then may diverge.
@@ -101,6 +102,11 @@ contract Authorizer is Roles, IAuthorizer, AccessControlEnumerable {
             return;
         }
 
+        // Pending roles are single-holder.
+        if (role == PENDING_GOVERNANCE_ROLE || role == PENDING_DEFAULT_ADMIN_ROLE) {
+            require(getRoleMemberCount(role) == 0, "pending role set");
+        }
+
         super.grantRole(role, account);
     }
 
@@ -108,10 +114,12 @@ contract Authorizer is Roles, IAuthorizer, AccessControlEnumerable {
     ///      role is the admin for `role`, so `super.grantRole` still enforces
     ///      that only the nominated account can complete the handoff.
     function _grantTwoStepRole(bytes32 role, address account, bytes32 pendingRole) internal {
-        require(!hasRole(role, account), "already live role");
+        require(account != address(0), "ZERO_ADDRESS");
         require(getRoleMemberCount(role) == 1, "bad core role count");
 
         address previous = getRoleMember(role, 0);
+        require(previous != account, "already live role");
+
         super.grantRole(role, account);
         _revokeRole(pendingRole, account);
         _revokeRole(role, previous);

@@ -79,7 +79,7 @@ contract HookTest is Setup {
         vm.stopPrank();
     }
 
-    function test_trancheDepositLimit_countsPendingExcess() public {
+    function test_trancheDepositLimit_usesTrancheTotalAssets() public {
         _depositA(alice, 70e18);
         _depositB(bob, 20e18);
         skip(SECONDS_PER_YEAR);
@@ -92,6 +92,12 @@ contract HookTest is Setup {
         vm.prank(management);
         hook.setDepositLimit(address(bTranche), 21_500_000_000_000_000_000);
 
+        assertApproxEqAbs(ITrancheStrategy(address(bTranche)).totalAssets(), 20_850_000_000_000_000_000, 1e15);
+        assertApproxEqAbs(ITrancheStrategy(address(bTranche)).maxDeposit(carol), 650_000_000_000_000_000, 1e15);
+
+        _reportTranches();
+
+        assertApproxEqAbs(ITrancheStrategy(address(bTranche)).totalAssets(), 21_480_000_000_000_000_000, 1e15);
         assertApproxEqAbs(ITrancheStrategy(address(bTranche)).maxDeposit(carol), 20_000_000_000_000_000, 1e15);
     }
 

@@ -177,10 +177,7 @@ contract Hook is IHook, Authorized {
         // Bound by the Tranche's own deposit limit AND the shared main-vault
         // ingress — a Tranche deposit routes straight into the main vault, so it
         // can never exceed what the main vault will accept.
-        return _min(
-            _vaultDepositLimit(_tranche, CONTROLLER.liveAssets(_tranche) + CONTROLLER.pendingExcess(_tranche)),
-            _vaultDepositLimit(address(VAULT), CONTROLLER.vaultAssets())
-        );
+        return _min(_vaultDepositLimit(_tranche), _vaultDepositLimit(address(VAULT)));
     }
 
     function withdrawCap(address _tranche) external view returns (uint256) {
@@ -203,7 +200,7 @@ contract Hook is IHook, Authorized {
             return 0;
         }
 
-        return _vaultDepositLimit(address(VAULT), CONTROLLER.vaultAssets());
+        return _vaultDepositLimit(address(VAULT));
     }
 
     function available_withdraw_limit(address _owner, uint256 _maxLoss, address[] calldata _strategies)
@@ -283,14 +280,13 @@ contract Hook is IHook, Authorized {
 
     /// @dev Asset amount a vault will currently accept — the min of its rolling
     ///      deposit rate limit and aggregate deposit ceiling. `_target` is a
-    ///      Tranche, or `address(VAULT)` for the main vault; `_current` is that
-    ///      target's current usage. Shared by the vault deposit hook and every
-    ///      Tranche's `depositCap`.
-    function _vaultDepositLimit(address _target, uint256 _current) internal view returns (uint256) {
-        return
-            _min(
-                _rateLimitAvailable(depositRateLimit[_target]), _depositLimitAvailable(depositLimits[_target], _current)
-            );
+    ///      Tranche, or `address(VAULT)` for the main vault. Shared by the vault
+    ///      deposit hook and every Tranche's `depositCap`.
+    function _vaultDepositLimit(address _target) internal view returns (uint256) {
+        return _min(
+            _rateLimitAvailable(depositRateLimit[_target]),
+            _depositLimitAvailable(depositLimits[_target], IVault(_target).totalAssets())
+        );
     }
 
     function _min(uint256 _a, uint256 _b) internal pure returns (uint256) {
