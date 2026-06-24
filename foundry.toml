@@ -17,4 +17,14 @@ remappings = [
     "@yearn-vaults/=lib/yearn-vaults-v3/contracts/"
 ]
 
+# Stateful invariant runs. Handler is revert-safe so reverts surface as findings.
+# Raise runs/depth for nightly; kept modest here because each call drives the
+# local invariant main-vault harness.
+[invariant]
+runs = 256
+depth = 50
+fail_on_revert = true
+call_override = false
+shrink_run_limit = 5000
+
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config
