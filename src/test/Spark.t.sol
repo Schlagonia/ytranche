@@ -6,9 +6,8 @@ import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @notice Sanity check that a real Spark / Sky 4626 vault works as the
-///         controller's reserve sink. This test is opt-in: it skips
-///         (returns early) unless run against a mainnet fork — set
-///         `ETH_RPC_URL` and run `forge test --fork-url $ETH_RPC_URL --match-contract SparkReserveSanityTest`.
+///         controller's reserve sink. It starts a mainnet fork from ETH_RPC_URL
+///         when the suite is not already running on mainnet.
 ///
 ///         Uses Spark sUSDS (a USDS savings 4626) as the canonical example.
 ///         Production deployments can swap any same-asset 4626 (e.g. Yearn
@@ -23,8 +22,7 @@ contract SparkReserveSanityTest is Test {
     address internal constant USER = address(0xC0FFEE);
 
     function setUp() public {
-        // Bail out cleanly when not on a fork — keeps the unit suite hermetic.
-        if (block.chainid != 1) vm.skip(true);
+        if (block.chainid != 1) vm.createSelectFork(vm.envString("ETH_RPC_URL"));
     }
 
     function test_susds_4626_deposit_and_redeem() public {

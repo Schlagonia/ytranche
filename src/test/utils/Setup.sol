@@ -3,7 +3,6 @@ pragma solidity ^0.8.18;
 
 import "forge-std/Test.sol";
 
-import {TokenizedStrategy} from "@tokenized-strategy/TokenizedStrategy.sol";
 import {TrancheStrategy} from "../../TrancheStrategy.sol";
 import {LockedTrancheStrategy} from "../../LockedTrancheStrategy.sol";
 import {TrancheController} from "../../TrancheController.sol";
@@ -18,10 +17,8 @@ import {IVaultFactory} from "@yearn-vaults/interfaces/IVaultFactory.sol";
 import {Roles} from "@yearn-vaults/interfaces/Roles.sol";
 
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {MockFactory} from "../mocks/MockFactory.sol";
 import {MockReserveVault} from "../mocks/MockReserveVault.sol";
 import {MockStrategy} from "../mocks/MockStrategy.sol";
-import {VyperDeployer} from "../../../lib/yearn-vaults-v3/foundry_tests/utils/VyperDeployer.sol";
 
 /// @notice Shared deployment / wiring for all Tranche tests.
 ///   Three Tranches all built from the same generic mapping-driven
@@ -38,15 +35,12 @@ contract Setup is Test {
     address public treasury = address(0xC1);
 
     MockERC20 public asset;
-    MockFactory public factory;
     IVault public mainVault;
     IVaultFactory public vaultFactory;
-    VyperDeployer public vyperDeployer;
     MockReserveVault public reserveVault;
     Authorizer public authorizer;
     Hook public hook;
     EmergencyAdmin public emergencyAdmin;
-    TokenizedStrategy public tokenizedStrategyImplementation;
     MockStrategy public riskyStrategy;
     TrancheController public controller;
     TrancheStrategy public aTranche;
@@ -64,28 +58,21 @@ contract Setup is Test {
     uint256 internal constant WAD = 1e18;
     uint256 internal constant MAX_BPS = 10_000;
     uint256 internal constant SECONDS_PER_YEAR = 31_556_952;
-    // Mirrors BaseStrategy.tokenizedStrategyAddress in the constant_accual branch.
-    address internal constant TOKENIZED_STRATEGY_ADDRESS = 0x2e234DAe75C793f67A35089C9d99245E1C58470b;
+    address internal constant VAULT_ORIGINAL_ADDRESS = 0xdD3FA86409658d207A9BE0141eE560C8db557824;
+    address internal constant VAULT_FACTORY_ADDRESS = 0x310aC28ACF5E514abDbFF9Ab25e21f1bfe22bcAC;
+    address internal constant TOKENIZED_STRATEGY_ADDRESS = 0x310f5Db015E9d6E542fd41bd4542640790791e76;
+
+    /// @dev Override to stand the system up on a non-18-decimal asset.
+    function _deployAsset() internal virtual returns (MockERC20) {
+        return new MockERC20("Mock USD", "mUSD");
+    }
 
     function setUp() public virtual {
-        asset = new MockERC20("Mock USD", "mUSD");
+        _selectFork();
 
-        // Burn the deterministic holder address before deploying the real factory.
-        new MockFactory();
-        factory = new MockFactory();
-        tokenizedStrategyImplementation = new TokenizedStrategy(address(factory));
-        vm.etch(TOKENIZED_STRATEGY_ADDRESS, address(tokenizedStrategyImplementation).code);
+        asset = _deployAsset();
 
-        vyperDeployer = new VyperDeployer();
-        address vaultOriginal = vyperDeployer.deployContract("lib/yearn-vaults-v3/contracts/", "VaultV3");
-        vaultFactory = IVaultFactory(
-            vyperDeployer.deployContract(
-                "lib/yearn-vaults-v3/contracts/",
-                "VaultFactory",
-                abi.encode("YTranche Test Vault Factory", vaultOriginal, governance)
-            )
-        );
-        mainVault = IVault(vaultFactory.deploy_new_vault(address(asset), "Main", "MAIN", address(this), 0));
+        mainVault = _deployMainVault();
         mainVault.set_role(address(this), Roles.ALL);
         mainVault.set_role(keeper, Roles.REPORTING_MANAGER | Roles.DEBT_MANAGER);
         mainVault.set_deposit_limit(type(uint256).max);
@@ -174,6 +161,17 @@ contract Setup is Test {
     // ------------------------------------------------------------------
     //  Helpers
     // ------------------------------------------------------------------
+    function _selectFork() internal virtual {
+        if (VAULT_FACTORY_ADDRESS.code.length == 0 || TOKENIZED_STRATEGY_ADDRESS.code.length == 0) {
+            vm.createSelectFork(vm.envString("ETH_RPC_URL"));
+        }
+    }
+
+    function _deployMainVault() internal virtual returns (IVault) {
+        vaultFactory = IVaultFactory(VAULT_FACTORY_ADDRESS);
+        return IVault(vaultFactory.deploy_new_vault(address(asset), "Main", "MAIN", address(this), 0));
+    }
+
     function _airdrop(address _to, uint256 _amount) internal {
         asset.mint(_to, _amount);
     }
@@ -244,6 +242,29 @@ contract Setup is Test {
         }
         vm.prank(keeper);
         IStrategy(address(riskyStrategy)).report();
+        vm.prank(keeper);
+        mainVault.process_report(address(riskyStrategy));
+    }
+
+    /// @dev Like `_simulateRiskyPnL` but stops before `mainVault.process_report`,
+    ///      so the PnL is recorded at the strategy level but NOT yet folded into
+    ///      the main vault's accounting. Models the markdown-before-settle window.
+    function _simulateRiskyPnLUnsettled(int256 _delta) internal {
+        if (_delta > 0) {
+            asset.mint(address(riskyStrategy), uint256(_delta));
+        } else if (_delta < 0) {
+            uint256 amount = uint256(-_delta);
+            uint256 balance = asset.balanceOf(address(riskyStrategy));
+            require(balance >= amount, "burn too much");
+            asset.burn(address(riskyStrategy), amount);
+        }
+        vm.prank(keeper);
+        IStrategy(address(riskyStrategy)).report();
+    }
+
+    /// @dev Fold any outstanding strategy-level PnL into the main vault. The
+    ///      counterpart that finishes `_simulateRiskyPnLUnsettled`.
+    function _processVaultReport() internal {
         vm.prank(keeper);
         mainVault.process_report(address(riskyStrategy));
     }

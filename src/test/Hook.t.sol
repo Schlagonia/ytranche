@@ -65,6 +65,77 @@ contract HookTest is Setup {
         _depositA(alice, 5e18);
     }
 
+    /// §5.4 — the withdraw rate-limit bucket (never exercised under a binding limit
+    /// elsewhere) throttles redemptions and rolls over after the window.
+    function test_withdrawRateLimit_throttlesAndRollsOver() public {
+        vm.startPrank(management);
+        hook.setRateLimitWindow(1 hours);
+        hook.setWithdrawRateLimit(address(aTranche), uint128(10e18));
+        vm.stopPrank();
+
+        _depositA(alice, 30e18);
+
+        // Withdrawal up to the limit succeeds and fills the bucket.
+        vm.prank(alice);
+        ITrancheStrategy(address(aTranche)).withdraw(10e18, alice, alice);
+
+        // A second withdrawal in the same window is blocked.
+        vm.prank(alice);
+        vm.expectRevert();
+        ITrancheStrategy(address(aTranche)).withdraw(1e18, alice, alice);
+
+        // After the window rolls it opens again.
+        skip(61 minutes);
+        vm.prank(alice);
+        ITrancheStrategy(address(aTranche)).withdraw(5e18, alice, alice);
+    }
+
+    /// §5.4 — rate-limit buckets are keyed per target, so filling one Tranche's
+    /// bucket does not consume another's.
+    function test_rateLimitBuckets_areIsolatedPerTranche() public {
+        vm.startPrank(management);
+        hook.setRateLimitWindow(1 hours);
+        hook.setDepositRateLimit(address(aTranche), uint128(10e18));
+        hook.setDepositRateLimit(address(bTranche), uint128(10e18));
+        vm.stopPrank();
+
+        _depositA(alice, 10e18); // fills A's bucket
+
+        _airdrop(alice, 1e18);
+        vm.startPrank(alice);
+        asset.approve(address(aTranche), 1e18);
+        vm.expectRevert();
+        ITrancheStrategy(address(aTranche)).deposit(1e18, alice); // A blocked
+        vm.stopPrank();
+
+        // B's independent bucket is untouched.
+        _depositB(bob, 10e18);
+    }
+
+    /// §5.2 / #14 — lowering a rate limit below the already-used amount floors the
+    /// available headroom at zero (no underflow), blocking further throughput until
+    /// the window rolls.
+    function test_rateLimit_loweringBelowUsed_zeroesAvailable() public {
+        vm.startPrank(management);
+        hook.setRateLimitWindow(1 hours);
+        hook.setDepositRateLimit(address(aTranche), uint128(10e18));
+        vm.stopPrank();
+
+        _depositA(alice, 8e18); // uses 8 of 10
+
+        // Lower the limit below what's already used this window.
+        vm.prank(management);
+        hook.setDepositRateLimit(address(aTranche), uint128(5e18));
+
+        // Available is floored at zero; any further deposit is blocked.
+        _airdrop(alice, 1e18);
+        vm.startPrank(alice);
+        asset.approve(address(aTranche), 1e18);
+        vm.expectRevert();
+        ITrancheStrategy(address(aTranche)).deposit(1e18, alice);
+        vm.stopPrank();
+    }
+
     function test_trancheDepositLimit_capsAggregateDeposits() public {
         vm.prank(management);
         hook.setDepositLimit(address(aTranche), 10e18);

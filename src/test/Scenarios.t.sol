@@ -4,15 +4,18 @@ pragma solidity ^0.8.18;
 import "forge-std/Test.sol";
 import {Setup} from "./utils/Setup.sol";
 import {ITrancheStrategy} from "../interfaces/ITrancheStrategy.sol";
+import {MockRoundUpReserveVault} from "./mocks/MockRoundUpReserveVault.sol";
 
-/// @notice Invariants for the symmetric A/B/E Tranche model.
+/// @notice Deterministic, single-scenario tests for the symmetric A/B/E Tranche
+///   model. (Renamed from Invariants.t.sol: these are hand-written scenarios; the
+///   stateful Foundry invariants live in test/invariant/.)
 ///   Defaults:
 ///     A target 4.25 %/yr, A excess 0
 ///     B target 4.25 %/yr, B excess 4000  (40 %)
 ///     E target 0,         E excess 6000  (60 %)
-///   Loss waterfall: reserve → E → B → A
-///   Profit path:    A target → B target → E target → split excess by shares
-contract InvariantsTest is Setup {
+///   Loss waterfall: reserve -> E -> B -> A
+///   Profit path:    A target -> B target -> E target -> split excess by shares
+contract ScenariosTest is Setup {
     uint256 internal constant YEAR = 31_556_952;
 
     event TrancheFrozenSet(address indexed tranche, bool frozen);
@@ -159,6 +162,130 @@ contract InvariantsTest is Setup {
         uint256 e = controller.liveAssets(address(eTranche));
         assertGt(e, 1_400_000_000_000_000_000);
         assertLt(e, 1_410_000_000_000_000_000);
+    }
+
+    /// @dev §5.4 / M-2 — excess assigned to a zero-supply Tranche is stranded as
+    ///      pendingExcess and then captured wholesale by the FIRST depositor when
+    ///      realized. Documents the windfall behavior.
+    function test_scenario_zeroSupplyExcess_inflatesFirstDepositor() public {
+        _depositA(alice, 70e18);
+        _depositB(bob, 20e18);
+        // E has a 60% excess share but no deposits (zero supply).
+        skip(YEAR);
+        _simulateRiskyPnL(int256(45e17)); // 4.50 profit
+        _settle();
+
+        uint256 ePending = controller.pendingExcess(address(eTranche));
+        assertGt(ePending, 0, "excess assigned to empty E");
+        assertEq(ITrancheStrategy(address(eTranche)).totalSupply(), 0, "E still empty");
+
+        // First E depositor arrives; report realizes the stranded excess into the
+        // baseline, so the lone depositor captures it on top of principal.
+        _depositE(eve, 1e18);
+        _reportTranches();
+        uint256 eShares = ITrancheStrategy(address(eTranche)).balanceOf(eve);
+        uint256 eValue = ITrancheStrategy(address(eTranche)).convertToAssets(eShares);
+        assertApproxEqAbs(eValue, 1e18 + ePending, 1e15, "first depositor captured stranded excess");
+    }
+
+    /// @dev §5.1 / M-3 — full reserve drain in settle() does not revert even when the
+    ///      reserve vault rounds withdrawal shares UP past the held balance, because
+    ///      the controller clamps the draw to maxRedeem and redeems share-exact.
+    function test_scenario_fullReserveDrain_roundUpDoesNotRevert() public {
+        MockRoundUpReserveVault ru = new MockRoundUpReserveVault(address(asset));
+        vm.prank(governance);
+        controller.setReserveVault(address(ru));
+
+        _depositA(alice, 70e18);
+        _fundReserve(10e18); // funds the adversarial reserve
+
+        // The reserve's previewWithdraw over-reports shares vs. what is held.
+        uint256 held = ru.balanceOf(address(controller));
+        assertGt(ru.previewWithdraw(controller.reserveAssets()), held, "round-up exceeds held shares");
+
+        // A loss larger than the full reserve forces settle() to drain all of it.
+        skip(YEAR);
+        _simulateRiskyPnL(-int256(20e18));
+        _settle(); // must NOT revert
+
+        assertApproxEqAbs(controller.reserveAssets(), 0, 1e12, "reserve fully drained");
+    }
+
+    /// @dev §5.2 — fuzz the loss waterfall: the senior Tranche is untouched as long
+    ///      as the junior buffer (reserve + E + B) can absorb the loss, and only
+    ///      absorbs once that buffer is exhausted. No time skip -> no target accrual.
+    function testFuzz_lossAbsorptionJuniorFirst(uint256 lossSeed) public {
+        _depositA(alice, 70e18);
+        _depositB(bob, 20e18);
+        _depositE(eve, 10e18);
+        _fundReserve(10e18);
+
+        uint256 loss = bound(lossSeed, 0, 95e18);
+        _simulateRiskyPnL(-int256(loss));
+        _settle();
+
+        uint256 aLive = controller.liveAssets(address(aTranche));
+        uint256 juniorBuffer = 10e18 + 10e18 + 20e18; // reserve + E + B
+
+        if (loss <= juniorBuffer) {
+            assertApproxEqAbs(aLive, 70e18, 1e12, "senior untouched while junior buffer remains");
+            assertFalse(controller.isFrozen(address(aTranche)), "A not frozen");
+        } else {
+            assertLt(aLive, 70e18, "senior absorbs only after junior buffer exhausted");
+        }
+    }
+
+    /// @dev §5.2 — fuzz the excess split: it is assigned by excessShareBps, so for
+    ///      any profitable settle E (60%) > B (40%) > A (0).
+    function testFuzz_excessSplit_byBps(uint256 profitSeed) public {
+        _depositA(alice, 70e18);
+        _depositB(bob, 20e18);
+        _depositE(eve, 10e18);
+        skip(YEAR);
+        uint256 profit = bound(profitSeed, 10e18, 1000e18); // exceeds targets -> real excess
+        _simulateRiskyPnL(int256(profit));
+        _settle();
+
+        assertEq(controller.pendingExcess(address(aTranche)), 0, "A has 0 excess share");
+        uint256 b = controller.pendingExcess(address(bTranche));
+        uint256 e = controller.pendingExcess(address(eTranche));
+        assertGt(b, 0, "B got excess");
+        assertGt(e, b, "E (60%) > B (40%)");
+    }
+
+    /// @dev §5.2 — fuzz target accrual: it is monotonic in time and bounded above by
+    ///      a rate slightly over the 4.25%/yr target (the per-second rate truncates
+    ///      down, so realized accrual never exceeds the nominal bound).
+    function testFuzz_targetAccrual_monotonicAndBounded(uint256 amtSeed, uint256 timeSeed) public {
+        uint256 amt = bound(amtSeed, 1e18, 1_000_000e18);
+        _depositA(alice, amt);
+        uint256 base = controller.liveAssets(address(aTranche));
+
+        uint256 t = bound(timeSeed, 0, 365 days);
+        skip(t);
+        uint256 grown = controller.liveAssets(address(aTranche));
+
+        assertGe(grown, base, "accrual monotonic");
+        uint256 maxGrowth = base + (base * 500 * t) / (10_000 * YEAR); // 5%/yr ceiling
+        assertLe(grown, maxGrowth + 1, "accrual within target bound");
+    }
+
+    /// @dev §5.1 — a reserve that has itself lost value (marked down) is still drawn
+    ///      correctly at settle, with the residual loss flowing to the senior.
+    function test_scenario_reserveLoss_handledAtSettle() public {
+        _depositA(alice, 70e18);
+        _fundReserve(10e18);
+
+        // Simulate a reserve-vault loss by burning underlying it holds.
+        asset.burn(address(reserveVault), 3e18);
+        assertApproxEqAbs(controller.reserveAssets(), 7e18, 1, "reserve marked down to 7");
+
+        skip(YEAR);
+        _simulateRiskyPnL(-int256(20e18));
+        _settle();
+
+        assertApproxEqAbs(controller.reserveAssets(), 0, 1e12, "depleted reserve fully drawn");
+        assertTrue(controller.isFrozen(address(aTranche)), "senior absorbs residual loss");
     }
 
     /// @dev Excess recorded at settle stays pending — out of live NAV —

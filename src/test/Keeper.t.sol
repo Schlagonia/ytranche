@@ -3,10 +3,13 @@ pragma solidity ^0.8.18;
 
 import {Setup} from "./utils/Setup.sol";
 import {Keeper as PeripheryKeeper} from "../periphery/Keeper.sol";
+import {TrancheStrategy} from "../TrancheStrategy.sol";
 import {ITrancheStrategy} from "../interfaces/ITrancheStrategy.sol";
 
 contract KeeperTest is Setup {
     PeripheryKeeper public batchKeeper;
+
+    event SettledAndReported(address indexed caller, uint256 trancheCount);
 
     function setUp() public override {
         super.setUp();
@@ -58,5 +61,54 @@ contract KeeperTest is Setup {
         assertGt(ITrancheStrategy(address(aTranche)).lastReport(), aLastReport, "A reported");
         assertGt(ITrancheStrategy(address(bTranche)).lastReport(), bLastReport, "B reported");
         assertGt(ITrancheStrategy(address(eTranche)).lastReport(), eLastReport, "E reported");
+    }
+
+    /// §6.7 — emits SettledAndReported(caller, trancheCount) with the live count.
+    function test_settleAndReport_emitsEventWithCount() public {
+        _depositA(alice, 10e18);
+        vm.expectEmit(true, false, false, true, address(batchKeeper));
+        emit SettledAndReported(keeper, 3); // A, B, E registered
+        vm.prank(keeper);
+        batchKeeper.settleAndReport();
+    }
+
+    /// §6.7 — governance is a superuser via `isAuthorized`, so it can call too.
+    function test_settleAndReport_allowsGovernanceCaller() public {
+        _depositA(alice, 10e18);
+        vm.prank(governance);
+        batchKeeper.settleAndReport();
+    }
+
+    /// §6.7 — the batch is driven by the controller's live priority list, so a
+    /// tranche registered after the Keeper was wired is reported too.
+    function test_settleAndReport_includesNewlyRegisteredTranche() public {
+        ITrancheStrategy d = ITrancheStrategy(
+            address(new TrancheStrategy(address(asset), "Tranche D", address(controller), address(hook), governance))
+        );
+
+        // Register before configuring: the strategy's totalAssets routes to
+        // controller.liveAssets, which reverts "!tranche" until registered.
+        vm.prank(governance);
+        controller.registerTranche(address(d), 0, 0);
+
+        // This test contract is `d`'s strategy-management (it deployed it).
+        d.setProfitMaxUnlockTime(0);
+        d.setPerformanceFee(0);
+        d.setKeeper(address(batchKeeper));
+        d.setOpen(true);
+        d.setProfitLimitRatio(type(uint16).max);
+        d.setLossLimitRatio(uint16(MAX_BPS - 1));
+
+        vm.startPrank(management);
+        hook.setDepositLimit(address(d), type(uint256).max);
+        hook.setDepositRateLimit(address(d), type(uint128).max);
+        hook.setWithdrawRateLimit(address(d), type(uint128).max);
+        vm.stopPrank();
+
+        uint256 before = d.lastReport();
+        skip(1);
+        vm.prank(keeper);
+        batchKeeper.settleAndReport();
+        assertGt(d.lastReport(), before, "D reported");
     }
 }

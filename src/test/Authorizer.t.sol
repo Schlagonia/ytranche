@@ -104,6 +104,32 @@ contract AuthorizerTest is Setup {
         assertTrue(authorizer.hasRole(govRole, governance), "governance retained");
     }
 
+    /// A pending core role is single-holder: a second pending grant reverts while
+    /// one is outstanding (prevents an ambiguous two-step handoff target).
+    function test_pendingGovernance_secondGrantReverts() public {
+        bytes32 pendingRole = authorizer.PENDING_GOVERNANCE_ROLE();
+        vm.prank(governance);
+        authorizer.grantRole(pendingRole, carol);
+
+        vm.prank(governance);
+        vm.expectRevert(bytes("pending role set"));
+        authorizer.grantRole(pendingRole, bob);
+
+        assertEq(authorizer.pendingGovernance(), carol, "first pending retained");
+    }
+
+    function test_pendingDefaultAdmin_secondGrantReverts() public {
+        bytes32 pendingRole = authorizer.PENDING_DEFAULT_ADMIN_ROLE();
+        vm.prank(governance);
+        authorizer.grantRole(pendingRole, carol);
+
+        vm.prank(governance);
+        vm.expectRevert(bytes("pending role set"));
+        authorizer.grantRole(pendingRole, bob);
+
+        assertEq(authorizer.pendingDefaultAdmin(), carol, "first pending retained");
+    }
+
     function test_selfPendingDefaultAdminCannotBrickDefaultAdmin() public {
         bytes32 defaultAdminRole = authorizer.DEFAULT_ADMIN_ROLE();
         bytes32 pendingRole = authorizer.PENDING_DEFAULT_ADMIN_ROLE();
