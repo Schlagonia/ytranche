@@ -83,7 +83,9 @@ contract KeeperTest is Setup {
     /// tranche registered after the Keeper was wired is reported too.
     function test_settleAndReport_includesNewlyRegisteredTranche() public {
         ITrancheStrategy d = ITrancheStrategy(
-            address(new TrancheStrategy(address(asset), "Tranche D", address(controller), address(hook), governance))
+            address(
+                new TrancheStrategy(address(asset), "Tranche D", "trD", address(controller), address(hook), governance)
+            )
         );
 
         // Register before configuring: the strategy's totalAssets routes to

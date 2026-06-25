@@ -42,8 +42,8 @@ import {Roles} from "./Roles.sol";
  *  pending holder claims the live role through {grantRole}. Pending core roles
  *  are single-holder. The claim path rejects no-op/self claims, clears the
  *  pending role, revokes the prior live holder, and asserts the role stayed
- *  single-holder. Role renouncing is disabled; removals must go through the
- *  relevant role admin via {revokeRole}.
+ *  single-holder. Role renouncing is disabled; non-core removals must go
+ *  through the relevant role admin via {revokeRole}.
  */
 contract Authorizer is Roles, IAuthorizer, AccessControlEnumerable {
     bytes32 public constant PENDING_GOVERNANCE_ROLE = keccak256("PENDING_GOVERNANCE_ROLE");
@@ -108,11 +108,19 @@ contract Authorizer is Roles, IAuthorizer, AccessControlEnumerable {
         super.grantRole(role, account);
     }
 
+    /// @dev Core live roles move only through the two-step claim path. Allowing
+    ///      pending holders to revoke them directly can strand the system with
+    ///      zero governance or default-admin members.
+    function revokeRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
+        require(role != GOVERNANCE_ROLE && role != DEFAULT_ADMIN_ROLE, "core revoke disabled");
+        super.revokeRole(role, account);
+    }
+
     /// @dev Claim a single-holder role through its pending role. The pending
-    ///      role is the admin for `role`, so `super.grantRole` still enforces
-    ///      that only the nominated account can complete the handoff.
+    ///      role is the admin for `role`, and the pending holder must claim for
+    ///      themselves so stale pending authority cannot survive a transfer.
     function _grantTwoStepRole(bytes32 role, address account, bytes32 pendingRole) internal {
-        require(account != address(0), "ZERO_ADDRESS");
+        require(account == msg.sender, "not pending holder");
         require(getRoleMemberCount(role) == 1, "bad core role count");
 
         address previous = getRoleMember(role, 0);

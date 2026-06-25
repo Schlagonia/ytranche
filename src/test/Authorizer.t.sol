@@ -87,6 +87,70 @@ contract AuthorizerTest is Setup {
         assertTrue(authorizer.hasRole(mgmtRole, eve), "new default admin grants roles");
     }
 
+    function test_pendingGovernanceCannotRevokeLiveGovernance() public {
+        bytes32 govRole = authorizer.GOVERNANCE_ROLE();
+        bytes32 pendingRole = authorizer.PENDING_GOVERNANCE_ROLE();
+
+        vm.prank(governance);
+        authorizer.grantRole(pendingRole, carol);
+
+        vm.prank(carol);
+        vm.expectRevert(bytes("core revoke disabled"));
+        authorizer.revokeRole(govRole, governance);
+
+        assertEq(authorizer.governance(), governance, "governance still live");
+        assertEq(authorizer.pendingGovernance(), carol, "pending retained");
+        assertEq(authorizer.getRoleMemberCount(govRole), 1, "one governance holder");
+    }
+
+    function test_pendingDefaultAdminCannotRevokeLiveDefaultAdmin() public {
+        bytes32 defaultAdminRole = authorizer.DEFAULT_ADMIN_ROLE();
+        bytes32 pendingRole = authorizer.PENDING_DEFAULT_ADMIN_ROLE();
+
+        vm.prank(governance);
+        authorizer.grantRole(pendingRole, carol);
+
+        vm.prank(carol);
+        vm.expectRevert(bytes("core revoke disabled"));
+        authorizer.revokeRole(defaultAdminRole, governance);
+
+        assertEq(authorizer.defaultAdmin(), governance, "default admin still live");
+        assertEq(authorizer.pendingDefaultAdmin(), carol, "pending retained");
+        assertEq(authorizer.getRoleMemberCount(defaultAdminRole), 1, "one default admin holder");
+    }
+
+    function test_pendingGovernanceCannotClaimForThirdParty() public {
+        bytes32 govRole = authorizer.GOVERNANCE_ROLE();
+        bytes32 pendingRole = authorizer.PENDING_GOVERNANCE_ROLE();
+
+        vm.prank(governance);
+        authorizer.grantRole(pendingRole, carol);
+
+        vm.prank(carol);
+        vm.expectRevert(bytes("not pending holder"));
+        authorizer.grantRole(govRole, bob);
+
+        assertEq(authorizer.governance(), governance, "governance stayed put");
+        assertEq(authorizer.pendingGovernance(), carol, "pending retained");
+        assertFalse(authorizer.hasRole(govRole, bob), "third party did not get governance");
+    }
+
+    function test_pendingDefaultAdminCannotClaimForThirdParty() public {
+        bytes32 defaultAdminRole = authorizer.DEFAULT_ADMIN_ROLE();
+        bytes32 pendingRole = authorizer.PENDING_DEFAULT_ADMIN_ROLE();
+
+        vm.prank(governance);
+        authorizer.grantRole(pendingRole, carol);
+
+        vm.prank(carol);
+        vm.expectRevert(bytes("not pending holder"));
+        authorizer.grantRole(defaultAdminRole, bob);
+
+        assertEq(authorizer.defaultAdmin(), governance, "default admin stayed put");
+        assertEq(authorizer.pendingDefaultAdmin(), carol, "pending retained");
+        assertFalse(authorizer.hasRole(defaultAdminRole, bob), "third party did not get default admin");
+    }
+
     function test_selfPendingGovernanceCannotBrickGovernance() public {
         bytes32 govRole = authorizer.GOVERNANCE_ROLE();
         bytes32 pendingRole = authorizer.PENDING_GOVERNANCE_ROLE();

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.18;
 
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {TokenizedStrategyLib as TokenizedStrategy} from "@tokenized-strategy/libraries/TokenizedStrategyLib.sol";
 
 import {TrancheStrategy} from "./TrancheStrategy.sol";
@@ -86,12 +85,13 @@ contract LockedTrancheStrategy is TrancheStrategy {
     constructor(
         address _asset,
         string memory _name,
+        string memory _symbol,
         address _controller,
         address _hook,
         address _governance,
         uint256 _cooldownDuration,
         uint256 _withdrawalWindow
-    ) TrancheStrategy(_asset, _name, _controller, _hook, _governance) {
+    ) TrancheStrategy(_asset, _name, _symbol, _controller, _hook, _governance) {
         require(_cooldownDuration <= MAX_COOLDOWN_DURATION, "cooldown too long");
         require(_withdrawalWindow >= MIN_WITHDRAWAL_WINDOW, "window too short");
         cooldownDuration = _cooldownDuration;

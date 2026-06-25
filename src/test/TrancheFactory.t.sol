@@ -14,7 +14,12 @@ contract TrancheFactoryTest is Setup {
     TrancheFactory public trancheFactory;
 
     event NewTrancheStrategy(
-        address indexed tranche, address indexed asset, address indexed controller, address hook, address governance
+        address indexed tranche,
+        address indexed asset,
+        address indexed controller,
+        address hook,
+        address governance,
+        string symbol
     );
     event NewLockedTrancheStrategy(
         address indexed tranche,
@@ -22,6 +27,7 @@ contract TrancheFactoryTest is Setup {
         address indexed controller,
         address hook,
         address governance,
+        string symbol,
         uint256 cooldownDuration,
         uint256 withdrawalWindow
     );
@@ -57,12 +63,14 @@ contract TrancheFactoryTest is Setup {
     }
 
     function test_trancheFactoryDeploysAndConfiguresStrategy() public {
-        address deployed =
-            trancheFactory.newTrancheStrategy(address(asset), "Factory Tranche", address(controller), address(hook));
+        address deployed = trancheFactory.newTrancheStrategy(
+            address(asset), "Factory Tranche", "FT", address(controller), address(hook)
+        );
         ITrancheStrategy tranche = ITrancheStrategy(deployed);
 
         assertEq(trancheFactory.performanceFeeRecipient(), treasury, "factory fee recipient");
         assertEq(tranche.asset(), address(asset), "asset");
+        assertEq(tranche.symbol(), "FT", "symbol");
         assertEq(tranche.hook(), address(hook), "hook");
         assertEq(tranche.keeper(), keeper, "keeper");
         assertEq(tranche.emergencyAdmin(), address(emergencyAdmin), "emergency admin");
@@ -76,12 +84,13 @@ contract TrancheFactoryTest is Setup {
 
     function test_lockedTrancheFactoryDeploysAndConfiguresStrategy() public {
         address deployed = trancheFactory.newLockedTrancheStrategy(
-            address(asset), "Factory Locked Tranche", address(controller), address(hook), 14 days, 7 days
+            address(asset), "Factory Locked Tranche", "FLT", address(controller), address(hook), 14 days, 7 days
         );
         ILockedTrancheStrategy tranche = ILockedTrancheStrategy(deployed);
 
         assertEq(trancheFactory.performanceFeeRecipient(), treasury, "factory fee recipient");
         assertEq(tranche.asset(), address(asset), "asset");
+        assertEq(tranche.symbol(), "FLT", "symbol");
         assertEq(tranche.hook(), address(hook), "hook");
         assertEq(tranche.cooldownDuration(), 14 days, "cooldown");
         assertEq(tranche.withdrawalWindow(), 7 days, "window");
@@ -114,8 +123,9 @@ contract TrancheFactoryTest is Setup {
     /// §6.1 — full post-deploy wiring (a factory tranche is NOT ready out of the box)
     /// then a deposit -> settle -> report -> redeem round trip.
     function test_factory_deployRegisterAcceptConfigureOperate() public {
-        address deployed =
-            trancheFactory.newTrancheStrategy(address(asset), "Factory Tranche", address(controller), address(hook));
+        address deployed = trancheFactory.newTrancheStrategy(
+            address(asset), "Factory Tranche", "FT", address(controller), address(hook)
+        );
         ITrancheStrategy t = ITrancheStrategy(deployed);
 
         // 1. register with excessShareBps = 0 (A/B/E already sum to MAX_BPS).
@@ -171,9 +181,10 @@ contract TrancheFactoryTest is Setup {
 
     /// §6.2 — the factory's immutable GOVERNANCE propagates to both strategy types.
     function test_factory_governanceImmutablePropagates() public {
-        address atomic = trancheFactory.newTrancheStrategy(address(asset), "FA", address(controller), address(hook));
+        address atomic =
+            trancheFactory.newTrancheStrategy(address(asset), "FA", "FA", address(controller), address(hook));
         address locked = trancheFactory.newLockedTrancheStrategy(
-            address(asset), "FL", address(controller), address(hook), 14 days, 7 days
+            address(asset), "FL", "FL", address(controller), address(hook), 14 days, 7 days
         );
         assertEq(TrancheStrategy(atomic).GOVERNANCE(), governance, "atomic governance");
         assertEq(LockedTrancheStrategy(locked).GOVERNANCE(), governance, "locked governance");
@@ -183,12 +194,12 @@ contract TrancheFactoryTest is Setup {
     /// §6.3 — setAddresses changes apply to FUTURE deployments only, and the old
     /// management loses the power once it transfers it.
     function test_factory_setAddresses_futureScopeAndPowerTransfer() public {
-        address s1 = trancheFactory.newTrancheStrategy(address(asset), "S1", address(controller), address(hook));
+        address s1 = trancheFactory.newTrancheStrategy(address(asset), "S1", "S1", address(controller), address(hook));
 
         vm.prank(management);
         trancheFactory.setAddresses(alice, bob, carol); // management -> alice, keeper -> carol
 
-        address s2 = trancheFactory.newTrancheStrategy(address(asset), "S2", address(controller), address(hook));
+        address s2 = trancheFactory.newTrancheStrategy(address(asset), "S2", "S2", address(controller), address(hook));
 
         // S1 keeps the old keeper / pending-management; S2 picks up the new ones.
         assertEq(ITrancheStrategy(s1).keeper(), keeper, "S1 old keeper");
@@ -207,7 +218,8 @@ contract TrancheFactoryTest is Setup {
     /// setPerformanceFeeRecipient). This locks the CURRENT behavior; if the intended
     /// behavior is to propagate it, change the factory and flip this assertion.
     function test_factory_performanceFeeRecipientNotApplied() public {
-        address deployed = trancheFactory.newTrancheStrategy(address(asset), "FF", address(controller), address(hook));
+        address deployed =
+            trancheFactory.newTrancheStrategy(address(asset), "FF", "FF", address(controller), address(hook));
         assertEq(trancheFactory.performanceFeeRecipient(), treasury, "factory stores it");
         assertTrue(
             IStrategy(deployed).performanceFeeRecipient() != treasury,
@@ -217,12 +229,13 @@ contract TrancheFactoryTest is Setup {
 
     /// §6.6 — deployment tracking mappings are set per type (and not the other).
     function test_factory_deploymentMappings() public {
-        address atomic = trancheFactory.newTrancheStrategy(address(asset), "A1", address(controller), address(hook));
+        address atomic =
+            trancheFactory.newTrancheStrategy(address(asset), "A1", "A1", address(controller), address(hook));
         assertTrue(trancheFactory.isDeployedTranche(atomic), "atomic tracked");
         assertFalse(trancheFactory.isDeployedLockedTranche(atomic), "atomic not flagged locked");
 
         address locked = trancheFactory.newLockedTrancheStrategy(
-            address(asset), "L1", address(controller), address(hook), 14 days, 7 days
+            address(asset), "L1", "L1", address(controller), address(hook), 14 days, 7 days
         );
         assertTrue(trancheFactory.isDeployedLockedTranche(locked), "locked tracked");
         assertFalse(trancheFactory.isDeployedTranche(locked), "locked not flagged atomic");
@@ -232,15 +245,15 @@ contract TrancheFactoryTest is Setup {
     /// address is unknown pre-deploy, so topic1 is not checked).
     function test_factory_emitsEvents() public {
         vm.expectEmit(false, true, true, true);
-        emit NewTrancheStrategy(address(0), address(asset), address(controller), address(hook), governance);
-        trancheFactory.newTrancheStrategy(address(asset), "A1", address(controller), address(hook));
+        emit NewTrancheStrategy(address(0), address(asset), address(controller), address(hook), governance, "A1");
+        trancheFactory.newTrancheStrategy(address(asset), "A1", "A1", address(controller), address(hook));
 
         vm.expectEmit(false, true, true, true);
         emit NewLockedTrancheStrategy(
-            address(0), address(asset), address(controller), address(hook), governance, 14 days, 7 days
+            address(0), address(asset), address(controller), address(hook), governance, "L1", 14 days, 7 days
         );
         trancheFactory.newLockedTrancheStrategy(
-            address(asset), "L1", address(controller), address(hook), 14 days, 7 days
+            address(asset), "L1", "L1", address(controller), address(hook), 14 days, 7 days
         );
     }
 
@@ -248,12 +261,12 @@ contract TrancheFactoryTest is Setup {
     function test_factory_lockedBoundsEnforced() public {
         vm.expectRevert(bytes("cooldown too long"));
         trancheFactory.newLockedTrancheStrategy(
-            address(asset), "TooLong", address(controller), address(hook), 31 days, 7 days
+            address(asset), "TooLong", "TL", address(controller), address(hook), 31 days, 7 days
         );
 
         vm.expectRevert(bytes("window too short"));
         trancheFactory.newLockedTrancheStrategy(
-            address(asset), "TooShort", address(controller), address(hook), 14 days, 1 days - 1
+            address(asset), "TooShort", "TS", address(controller), address(hook), 14 days, 1 days - 1
         );
     }
 }

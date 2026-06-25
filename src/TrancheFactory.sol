@@ -8,7 +8,12 @@ import {ITrancheStrategy} from "./interfaces/ITrancheStrategy.sol";
 /// @notice Factory for atomic and cooldown-gated Tranche deployments.
 contract TrancheFactory {
     event NewTrancheStrategy(
-        address indexed tranche, address indexed asset, address indexed controller, address hook, address governance
+        address indexed tranche,
+        address indexed asset,
+        address indexed controller,
+        address hook,
+        address governance,
+        string symbol
     );
     event NewLockedTrancheStrategy(
         address indexed tranche,
@@ -16,6 +21,7 @@ contract TrancheFactory {
         address indexed controller,
         address hook,
         address governance,
+        string symbol,
         uint256 cooldownDuration,
         uint256 withdrawalWindow
     );
@@ -47,23 +53,28 @@ contract TrancheFactory {
         GOVERNANCE = _governance;
     }
 
-    function newTrancheStrategy(address _asset, string calldata _name, address _controller, address _hook)
-        external
-        returns (address)
-    {
-        ITrancheStrategy tranche =
-            ITrancheStrategy(address(new TrancheStrategy(_asset, _name, _controller, _hook, GOVERNANCE)));
+    function newTrancheStrategy(
+        address _asset,
+        string calldata _name,
+        string calldata _symbol,
+        address _controller,
+        address _hook
+    ) external returns (address) {
+        ITrancheStrategy tranche = ITrancheStrategy(
+            address(new TrancheStrategy(_asset, _name, _symbol, _controller, _hook, GOVERNANCE))
+        );
 
         _configureStrategy(tranche);
         isDeployedTranche[address(tranche)] = true;
 
-        emit NewTrancheStrategy(address(tranche), _asset, _controller, _hook, GOVERNANCE);
+        emit NewTrancheStrategy(address(tranche), _asset, _controller, _hook, GOVERNANCE, _symbol);
         return address(tranche);
     }
 
     function newLockedTrancheStrategy(
         address _asset,
         string calldata _name,
+        string calldata _symbol,
         address _controller,
         address _hook,
         uint256 _cooldownDuration,
@@ -72,7 +83,7 @@ contract TrancheFactory {
         ITrancheStrategy tranche = ITrancheStrategy(
             address(
                 new LockedTrancheStrategy(
-                    _asset, _name, _controller, _hook, GOVERNANCE, _cooldownDuration, _withdrawalWindow
+                    _asset, _name, _symbol, _controller, _hook, GOVERNANCE, _cooldownDuration, _withdrawalWindow
                 )
             )
         );
@@ -81,7 +92,7 @@ contract TrancheFactory {
         isDeployedLockedTranche[address(tranche)] = true;
 
         emit NewLockedTrancheStrategy(
-            address(tranche), _asset, _controller, _hook, GOVERNANCE, _cooldownDuration, _withdrawalWindow
+            address(tranche), _asset, _controller, _hook, GOVERNANCE, _symbol, _cooldownDuration, _withdrawalWindow
         );
         return address(tranche);
     }

@@ -53,20 +53,37 @@ contract TrancheStrategy is BaseHooks {
     /// @notice Settable Hook contract — security / policy gate.
     IHook public hook;
 
+    /// @dev Explicit ERC20 symbol for this Tranche. TokenizedStrategy defaults
+    ///      to `ys<asset symbol>`, which is useless when several Tranches share
+    ///      the same asset.
+    string private _symbol;
+
     /*//////////////////////////////////////////////////////////////
                              CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor(address _asset, string memory _name, address _controller, address _hook, address _governance)
-        BaseHealthCheck(_asset, _name)
-    {
+    constructor(
+        address _asset,
+        string memory _name,
+        string memory _trancheSymbol,
+        address _controller,
+        address _hook,
+        address _governance
+    ) BaseHealthCheck(_asset, _name) {
         require(_controller != address(0) && _hook != address(0) && _governance != address(0), "ZERO");
+        require(bytes(_trancheSymbol).length != 0, "ZERO symbol");
         CONTROLLER = ITrancheController(_controller);
         GOVERNANCE = _governance;
         hook = IHook(_hook);
+        _symbol = _trancheSymbol;
 
         // Pre-approve the controller to pull underlying during `_deployFunds`.
         IERC20(_asset).forceApprove(_controller, type(uint256).max);
+    }
+
+    /// @notice ERC20 symbol set at deployment.
+    function symbol() external view returns (string memory) {
+        return _symbol;
     }
 
     /*//////////////////////////////////////////////////////////////
