@@ -505,6 +505,7 @@ contract TrancheController is Authorized {
                 // Resume accrual for any Tranche frozen by an earlier loss.
                 if (tranche.frozen) {
                     tranche.frozen = false;
+                    emit TrancheFrozenSet(trancheAddress, false);
                 }
 
                 // Record this Tranche's slice of the excess as pending.
@@ -552,8 +553,10 @@ contract TrancheController is Authorized {
                 // Any loss to the Tranche (pending and/or baseline) freezes it
                 uint256 absorbed = fromPending + fromBaseline;
                 if (absorbed > 0) {
-                    tranche.frozen = true;
-                    emit TrancheFrozenSet(trancheAddress, true);
+                    if (!tranche.frozen) {
+                        tranche.frozen = true;
+                        emit TrancheFrozenSet(trancheAddress, true);
+                    }
                     emit TrancheLoss(trancheAddress, absorbed);
                 }
             }

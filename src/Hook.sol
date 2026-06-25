@@ -181,11 +181,8 @@ contract Hook is IHook, Authorized {
     }
 
     function withdrawCap(address _tranche) external view returns (uint256) {
-        // Withdrawals are never allow-list gated — holders can always exit, so
-        // there is no owner to check. Bound by the rolling rate limit and the
-        // controller's main-vault deliverable so a redemption never out-runs
-        // main-vault liquidity (the reserve is a settlement-time backstop, not
-        // a redemption source).
+        // Bound by the rolling rate limit and the controller's main-vault
+        // deliverable so a redemption never out-runs main-vault liquidity.
         return _min(_rateLimitAvailable(withdrawRateLimit[_tranche]), CONTROLLER.vaultMaxWithdraw());
     }
 
