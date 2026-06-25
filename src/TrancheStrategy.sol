@@ -9,6 +9,7 @@ import {BaseHooks, BaseHealthCheck} from "@periphery/Bases/Hooks/BaseHooks.sol";
 
 import {ITrancheController} from "./interfaces/ITrancheController.sol";
 import {IHook} from "./interfaces/IHook.sol";
+import {Authorized} from "./periphery/Authorized.sol";
 
 /**
  * @title TrancheStrategy
@@ -24,10 +25,11 @@ import {IHook} from "./interfaces/IHook.sol";
  *  per-flow caps (returned in asset units) and `min`s them with whatever
  *  local constraints it has (cooldown availability for the locked variant).
  *
- *  The Hook reference is **settable** by governance — governance can rotate
- *  to a new Hook implementation without redeploying the Tranche.
+ *  The Hook reference is **settable** by governance through the shared
+ *  Authorizer — governance can rotate to a new Hook implementation without
+ *  redeploying the Tranche.
  */
-contract TrancheStrategy is BaseHooks {
+contract TrancheStrategy is BaseHooks, Authorized {
     using SafeERC20 for IERC20;
 
     /*//////////////////////////////////////////////////////////////
@@ -42,9 +44,6 @@ contract TrancheStrategy is BaseHooks {
 
     /// @notice Central economic controller (NAV source, settlement, waterfall).
     ITrancheController public immutable CONTROLLER;
-
-    /// @notice Address allowed to rotate the Hook.
-    address public immutable GOVERNANCE;
 
     /*//////////////////////////////////////////////////////////////
                                STORAGE
@@ -68,12 +67,11 @@ contract TrancheStrategy is BaseHooks {
         string memory _trancheSymbol,
         address _controller,
         address _hook,
-        address _governance
-    ) BaseHealthCheck(_asset, _name) {
-        require(_controller != address(0) && _hook != address(0) && _governance != address(0), "ZERO");
+        address _authorizer
+    ) BaseHealthCheck(_asset, _name) Authorized(_authorizer) {
+        require(_controller != address(0) && _hook != address(0), "ZERO");
         require(bytes(_trancheSymbol).length != 0, "ZERO symbol");
         CONTROLLER = ITrancheController(_controller);
-        GOVERNANCE = _governance;
         hook = IHook(_hook);
         _symbol = _trancheSymbol;
 
@@ -91,8 +89,7 @@ contract TrancheStrategy is BaseHooks {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Rotate to a new Hook contract. Governance only.
-    function setHook(address _newHook) external {
-        require(msg.sender == GOVERNANCE, "!governance");
+    function setHook(address _newHook) external isAuthorized(GOVERNANCE_ROLE) {
         require(_newHook != address(0), "ZERO hook");
         hook = IHook(_newHook);
 

@@ -112,13 +112,14 @@ contract Setup is Test {
         authorizer.grantRole(authorizer.KEEPER_ROLE(), keeper);
         vm.stopPrank();
 
-        aTranche =
-            new TrancheStrategy(address(asset), "Tranche A", "trA", address(controller), address(hook), governance);
+        aTranche = new TrancheStrategy(
+            address(asset), "Tranche A", "trA", address(controller), address(hook), address(authorizer)
+        );
         bTranche = new LockedTrancheStrategy(
-            address(asset), "Tranche B", "trB", address(controller), address(hook), governance, 14 days, 7 days
+            address(asset), "Tranche B", "trB", address(controller), address(hook), address(authorizer), 14 days, 7 days
         );
         eTranche = new LockedTrancheStrategy(
-            address(asset), "Tranche E", "trE", address(controller), address(hook), governance, 14 days, 7 days
+            address(asset), "Tranche E", "trE", address(controller), address(hook), address(authorizer), 14 days, 7 days
         );
 
         // Governance-side wiring.

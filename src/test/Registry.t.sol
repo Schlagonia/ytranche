@@ -12,7 +12,7 @@ contract TrancheRegistryTest is Setup {
     /// @dev Deploy only — configuration that triggers accrual must wait until
     ///      after the Tranche is registered (else `liveAssets` reverts).
     function _newTranche(string memory _name) internal returns (TrancheStrategy t) {
-        t = new TrancheStrategy(address(asset), _name, _name, address(controller), address(hook), governance);
+        t = new TrancheStrategy(address(asset), _name, _name, address(controller), address(hook), address(authorizer));
     }
 
     function _deposit(address _tranche, address _user, uint256 _amt) internal {

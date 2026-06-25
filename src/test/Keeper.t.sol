@@ -84,7 +84,9 @@ contract KeeperTest is Setup {
     function test_settleAndReport_includesNewlyRegisteredTranche() public {
         ITrancheStrategy d = ITrancheStrategy(
             address(
-                new TrancheStrategy(address(asset), "Tranche D", "trD", address(controller), address(hook), governance)
+                new TrancheStrategy(
+                    address(asset), "Tranche D", "trD", address(controller), address(hook), address(authorizer)
+                )
             )
         );
 

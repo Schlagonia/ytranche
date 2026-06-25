@@ -114,7 +114,12 @@ contract DeployTrancheSystem is Script {
         // deployed.controller.setReserveVault(config.reserveVault);
 
         deployed.aTranche = new TrancheStrategy(
-            config.asset, "Tranche A", "yvUSD-A", address(deployed.controller), address(deployed.hook), config.gov
+            config.asset,
+            "Tranche A",
+            "yvUSD-A",
+            address(deployed.controller),
+            address(deployed.hook),
+            address(deployed.authorizer)
         );
         deployed.bTranche = new LockedTrancheStrategy(
             config.asset,
@@ -122,7 +127,7 @@ contract DeployTrancheSystem is Script {
             "yvUSD-B",
             address(deployed.controller),
             address(deployed.hook),
-            config.gov,
+            address(deployed.authorizer),
             7 days,
             5 days
         );
@@ -132,7 +137,7 @@ contract DeployTrancheSystem is Script {
             "yvUSD-E",
             address(deployed.controller),
             address(deployed.hook),
-            config.gov,
+            address(deployed.authorizer),
             14 days,
             7 days
         );

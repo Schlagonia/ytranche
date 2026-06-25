@@ -90,6 +90,25 @@ contract HookTest is Setup {
         ITrancheStrategy(address(aTranche)).withdraw(5e18, alice, alice);
     }
 
+    function test_withdrawCap_includesMainVaultWithdrawRateLimit() public {
+        vm.startPrank(management);
+        hook.setRateLimitWindow(1 hours);
+        hook.setWithdrawRateLimit(address(aTranche), uint128(100e18));
+        hook.setWithdrawRateLimit(address(mainVault), uint128(40e18));
+        vm.stopPrank();
+
+        _depositA(alice, 100e18);
+
+        assertEq(controller.vaultMaxWithdraw(), 40e18, "vault cap includes main-vault bucket");
+        assertEq(ITrancheStrategy(address(aTranche)).maxWithdraw(alice), 40e18, "Tranche cap includes vault cap");
+
+        vm.prank(alice);
+        ITrancheStrategy(address(aTranche)).withdraw(40e18, alice, alice);
+
+        assertEq(controller.vaultMaxWithdraw(), 0, "main-vault bucket consumed");
+        assertEq(ITrancheStrategy(address(aTranche)).maxWithdraw(alice), 0, "Tranche cap tracks consumed vault bucket");
+    }
+
     /// §5.4 — rate-limit buckets are keyed per target, so filling one Tranche's
     /// bucket does not consume another's.
     function test_rateLimitBuckets_areIsolatedPerTranche() public {

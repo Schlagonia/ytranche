@@ -88,10 +88,10 @@ contract LockedTrancheStrategy is TrancheStrategy {
         string memory _symbol,
         address _controller,
         address _hook,
-        address _governance,
+        address _authorizer,
         uint256 _cooldownDuration,
         uint256 _withdrawalWindow
-    ) TrancheStrategy(_asset, _name, _symbol, _controller, _hook, _governance) {
+    ) TrancheStrategy(_asset, _name, _symbol, _controller, _hook, _authorizer) {
         require(_cooldownDuration <= MAX_COOLDOWN_DURATION, "cooldown too long");
         require(_withdrawalWindow >= MIN_WITHDRAWAL_WINDOW, "window too short");
         cooldownDuration = _cooldownDuration;

@@ -1,6 +1,6 @@
-# ytranche
+# yTranche
 
-ytranche is a generic Tranche layer for a Yearn V3 vault.
+yTranche is a generic Tranche layer for a Yearn V3 vault.
 
 The system lets multiple ERC-4626 Tranche strategies share one underlying
 Yearn V3 vault while the `TrancheController` keeps the economic accounting:
@@ -87,15 +87,14 @@ a settlement backstop, not a redemption source.
 
 ## Hook
 
-`Hook` is policy plumbing, not economics.
+`Hook` is used for aggregate and rate limits on all vaults.
 
 It is wired into the Yearn V3 main vault as deposit and withdrawal hook, and it
 is also called by each Tranche strategy.
 
 It controls:
 
-- Aggregate deposit limits per Tranche and for the main vault. Tranche limits
-  count live assets plus pending excess.
+- Aggregate deposit limits per Tranche and for the main vault.
 - Rolling deposit and withdrawal rate limits.
 - Main-vault direct-deposit gating through `open` and `allowed`.
 - Withdrawal caps based on main-vault deliverable assets.

@@ -12,7 +12,7 @@ contract TrancheFactory {
         address indexed asset,
         address indexed controller,
         address hook,
-        address governance,
+        address authorizer,
         string symbol
     );
     event NewLockedTrancheStrategy(
@@ -20,14 +20,14 @@ contract TrancheFactory {
         address indexed asset,
         address indexed controller,
         address hook,
-        address governance,
+        address authorizer,
         string symbol,
         uint256 cooldownDuration,
         uint256 withdrawalWindow
     );
 
     address public immutable EMERGENCY_ADMIN;
-    address public immutable GOVERNANCE;
+    address public immutable AUTHORIZER;
 
     address public management;
     address public performanceFeeRecipient;
@@ -41,16 +41,16 @@ contract TrancheFactory {
         address _performanceFeeRecipient,
         address _keeper,
         address _emergencyAdmin,
-        address _governance
+        address _authorizer
     ) {
         require(
-            _management != address(0) && _performanceFeeRecipient != address(0) && _governance != address(0), "ZERO"
+            _management != address(0) && _performanceFeeRecipient != address(0) && _authorizer != address(0), "ZERO"
         );
         management = _management;
         performanceFeeRecipient = _performanceFeeRecipient;
         keeper = _keeper;
         EMERGENCY_ADMIN = _emergencyAdmin;
-        GOVERNANCE = _governance;
+        AUTHORIZER = _authorizer;
     }
 
     function newTrancheStrategy(
@@ -61,13 +61,13 @@ contract TrancheFactory {
         address _hook
     ) external returns (address) {
         ITrancheStrategy tranche = ITrancheStrategy(
-            address(new TrancheStrategy(_asset, _name, _symbol, _controller, _hook, GOVERNANCE))
+            address(new TrancheStrategy(_asset, _name, _symbol, _controller, _hook, AUTHORIZER))
         );
 
         _configureStrategy(tranche);
         isDeployedTranche[address(tranche)] = true;
 
-        emit NewTrancheStrategy(address(tranche), _asset, _controller, _hook, GOVERNANCE, _symbol);
+        emit NewTrancheStrategy(address(tranche), _asset, _controller, _hook, AUTHORIZER, _symbol);
         return address(tranche);
     }
 
@@ -83,7 +83,7 @@ contract TrancheFactory {
         ITrancheStrategy tranche = ITrancheStrategy(
             address(
                 new LockedTrancheStrategy(
-                    _asset, _name, _symbol, _controller, _hook, GOVERNANCE, _cooldownDuration, _withdrawalWindow
+                    _asset, _name, _symbol, _controller, _hook, AUTHORIZER, _cooldownDuration, _withdrawalWindow
                 )
             )
         );
@@ -92,7 +92,7 @@ contract TrancheFactory {
         isDeployedLockedTranche[address(tranche)] = true;
 
         emit NewLockedTrancheStrategy(
-            address(tranche), _asset, _controller, _hook, GOVERNANCE, _symbol, _cooldownDuration, _withdrawalWindow
+            address(tranche), _asset, _controller, _hook, AUTHORIZER, _symbol, _cooldownDuration, _withdrawalWindow
         );
         return address(tranche);
     }

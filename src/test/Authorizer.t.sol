@@ -3,6 +3,7 @@ pragma solidity ^0.8.18;
 
 import "forge-std/Test.sol";
 import {Setup} from "./utils/Setup.sol";
+import {ITrancheStrategy} from "../interfaces/ITrancheStrategy.sol";
 
 /// @notice Access-control matrix + two-step governance handoff on the generic
 ///   Authorizer that the Hook and Controller delegate to. The model is flat:
@@ -53,6 +54,27 @@ contract AuthorizerTest is Setup {
         vm.prank(eve);
         authorizer.grantRole(keeperRole, bob);
         assertTrue(authorizer.hasRole(keeperRole, bob));
+    }
+
+    function test_strategySetHookFollowsGovernanceTransfer() public {
+        bytes32 govRole = authorizer.GOVERNANCE_ROLE();
+        bytes32 pendingRole = authorizer.PENDING_GOVERNANCE_ROLE();
+        address oldHook = address(hook);
+        address newHook = address(0xF00);
+
+        vm.prank(governance);
+        authorizer.grantRole(pendingRole, carol);
+        vm.prank(carol);
+        authorizer.grantRole(govRole, carol);
+
+        vm.prank(governance);
+        vm.expectRevert(bytes("!authorized"));
+        ITrancheStrategy(address(aTranche)).setHook(newHook);
+        assertEq(ITrancheStrategy(address(aTranche)).hook(), oldHook, "old governance could not rotate hook");
+
+        vm.prank(carol);
+        ITrancheStrategy(address(aTranche)).setHook(newHook);
+        assertEq(ITrancheStrategy(address(aTranche)).hook(), newHook, "new governance rotated hook");
     }
 
     function test_twoStepDefaultAdminTransfer() public {
