@@ -18,7 +18,7 @@ import {MockRoundUpReserveVault} from "./mocks/MockRoundUpReserveVault.sol";
 contract ScenariosTest is Setup {
     uint256 internal constant YEAR = 31_556_952;
 
-    event TrancheFrozenSet(address indexed tranche, bool frozen);
+    event TrancheAccrualPausedSet(address indexed tranche, bool accrualPaused);
     event TrancheLoss(address indexed tranche, uint256 amount);
 
     function test_inv_reserveSeparate_fromRisky() public {
@@ -50,8 +50,8 @@ contract ScenariosTest is Setup {
         _settle();
         assertEq(controller.reserveAssets(), 0, "reserve wiped");
         assertEq(controller.liveAssets(address(bTranche)), 0, "B wiped");
-        assertTrue(controller.isFrozen(address(bTranche)));
-        assertTrue(controller.isFrozen(address(aTranche)));
+        assertTrue(controller.isAccrualPaused(address(bTranche)));
+        assertTrue(controller.isAccrualPaused(address(aTranche)));
         uint256 a = controller.liveAssets(address(aTranche));
         assertGt(a, 64_995_000_000_000_000_000);
         assertLt(a, 65_005_000_000_000_000_000);
@@ -68,9 +68,9 @@ contract ScenariosTest is Setup {
         uint256 b = controller.liveAssets(address(bTranche));
         assertGt(b, 12_020_000_000_000_000_000);
         assertLt(b, 12_030_000_000_000_000_000);
-        assertTrue(controller.isFrozen(address(bTranche)));
+        assertTrue(controller.isAccrualPaused(address(bTranche)));
         assertGt(controller.liveAssets(address(aTranche)), 70e18, "A unaffected");
-        assertFalse(controller.isFrozen(address(aTranche)));
+        assertFalse(controller.isAccrualPaused(address(aTranche)));
     }
 
     function test_inv_fullReserveDrainUsesRedeem() public {
@@ -83,7 +83,7 @@ contract ScenariosTest is Setup {
 
         assertEq(controller.reserveAssets(), 0, "reserve fully redeemed");
         assertEq(controller.liveAssets(address(aTranche)), 70e18, "A whole");
-        assertFalse(controller.isFrozen(address(aTranche)), "A not frozen");
+        assertFalse(controller.isAccrualPaused(address(aTranche)), "A accrual not paused");
     }
 
     function test_inv_trancheCoverage_isSeniorFirst() public {
@@ -229,7 +229,7 @@ contract ScenariosTest is Setup {
 
         if (loss <= juniorBuffer) {
             assertApproxEqAbs(aLive, 70e18, 1e12, "senior untouched while junior buffer remains");
-            assertFalse(controller.isFrozen(address(aTranche)), "A not frozen");
+            assertFalse(controller.isAccrualPaused(address(aTranche)), "A accrual not paused");
         } else {
             assertLt(aLive, 70e18, "senior absorbs only after junior buffer exhausted");
         }
@@ -285,7 +285,7 @@ contract ScenariosTest is Setup {
         _settle();
 
         assertApproxEqAbs(controller.reserveAssets(), 0, 1e12, "depleted reserve fully drawn");
-        assertTrue(controller.isFrozen(address(aTranche)), "senior absorbs residual loss");
+        assertTrue(controller.isAccrualPaused(address(aTranche)), "senior absorbs residual loss");
     }
 
     /// @dev Excess recorded at settle stays pending — out of live NAV —
@@ -341,7 +341,7 @@ contract ScenariosTest is Setup {
         _settle();
         assertApproxEqAbs(controller.reserveAssets(), 9e18, 1e15, "reserve absorbed the loss");
         assertApproxEqAbs(controller.liveAssets(address(bTranche)), 20_850_000_000_000_000_000, 1e15, "B base whole");
-        assertFalse(controller.isFrozen(address(bTranche)), "B not frozen");
+        assertFalse(controller.isAccrualPaused(address(bTranche)), "B accrual not paused");
         assertApproxEqAbs(
             controller.pendingExcess(address(bTranche)) + controller.pendingExcess(address(eTranche)),
             1_575_000_000_000_000_000,
@@ -352,7 +352,7 @@ contract ScenariosTest is Setup {
 
     /// @dev Once the reserve is exhausted, loss spills into Tranches in reverse
     ///      priority, eating each Tranche's pending excess before its baseline.
-    ///      Current freeze policy still freezes any Tranche that absorbs loss.
+    ///      Current accrual pause policy still pauses any Tranche that absorbs loss.
     function test_inv_loss_pendingAbsorbsAtTranchePriority() public {
         _depositA(alice, 70e18);
         _depositB(bob, 20e18);
@@ -371,16 +371,16 @@ contract ScenariosTest is Setup {
         assertApproxEqAbs(
             controller.pendingExcess(address(bTranche)), 575_000_000_000_000_000, 1e15, "B pending nicked"
         );
-        // Baselines are untouched, but losing pending excess still freezes a
+        // Baselines are untouched, but losing pending excess still pauses accrual for a
         // Tranche (loss is loss, regardless of which part of the claim it hit).
         assertApproxEqAbs(controller.liveAssets(address(bTranche)), 20_850_000_000_000_000_000, 1e15, "B base whole");
         assertApproxEqAbs(controller.liveAssets(address(aTranche)), 72_975_000_000_000_000_000, 1e15, "A base whole");
-        assertTrue(controller.isFrozen(address(eTranche)), "E frozen on pending loss");
-        assertTrue(controller.isFrozen(address(bTranche)), "B frozen on pending loss");
-        assertFalse(controller.isFrozen(address(aTranche)), "A untouched, not frozen");
+        assertTrue(controller.isAccrualPaused(address(eTranche)), "E accrual paused on pending loss");
+        assertTrue(controller.isAccrualPaused(address(bTranche)), "B accrual paused on pending loss");
+        assertFalse(controller.isAccrualPaused(address(aTranche)), "A untouched, accrual not paused");
     }
 
-    /// @dev A Tranche taking a loss freezes and emits a single combined
+    /// @dev A Tranche taking a loss pauses accrual and emits a single combined
     ///      TrancheLoss (here B's baseline absorbs the whole 10).
     function test_inv_trancheLoss_eventEmitted() public {
         _depositA(alice, 70e18);
@@ -389,30 +389,30 @@ contract ScenariosTest is Setup {
         _simulateRiskyPnL(-int256(10e18));
 
         vm.expectEmit(true, false, false, true, address(controller));
-        emit TrancheFrozenSet(address(bTranche), true);
+        emit TrancheAccrualPausedSet(address(bTranche), true);
         vm.expectEmit(true, false, false, true, address(controller));
         emit TrancheLoss(address(bTranche), 10e18);
         _settle();
     }
 
-    /// @dev A Tranche frozen by a loss resumes accrual automatically on
+    /// @dev A Tranche paused by a loss resumes accrual automatically on
     ///      the next strictly profitable settle.
-    function test_inv_autoUnfreeze_onProfitableSettle() public {
+    function test_inv_autoResumeAccrual_onProfitableSettle() public {
         _depositA(alice, 70e18);
         _depositB(bob, 20e18);
         skip(YEAR);
         _simulateRiskyPnL(-int256(10e18)); // no reserve — B takes the hit
         _settle();
-        assertTrue(controller.isFrozen(address(bTranche)), "B frozen on loss");
+        assertTrue(controller.isAccrualPaused(address(bTranche)), "B accrual paused on loss");
 
-        // A merely break-even settle must NOT unfreeze.
+        // A merely break-even settle must NOT resume accrual.
         _settle();
-        assertTrue(controller.isFrozen(address(bTranche)), "break-even keeps freeze");
+        assertTrue(controller.isAccrualPaused(address(bTranche)), "break-even keeps accrual paused");
 
-        // Vault earns again — freeze lifts and accrual resumes.
+        // Vault earns again — the pause lifts and accrual resumes.
         _simulateRiskyPnL(int256(5e18));
         _settle();
-        assertFalse(controller.isFrozen(address(bTranche)), "B unfrozen on profit");
+        assertFalse(controller.isAccrualPaused(address(bTranche)), "B accrual resumed on profit");
         uint256 bNav = controller.liveAssets(address(bTranche));
         skip(YEAR);
         assertGt(controller.liveAssets(address(bTranche)), bNav, "B accruing again");

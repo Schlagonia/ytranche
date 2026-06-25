@@ -43,7 +43,7 @@ Each registered Tranche has:
 - `excessShareBps`: share of profit left after targets.
 - `baselineAssets`: principal plus realized target and realized excess.
 - `pendingExcess`: profit assigned at settlement but not yet realized into the strategy.
-- `frozen`: pauses target accrual after a loss until management or a profitable settle unfreezes it.
+- `accrualPaused`: pauses target accrual after a loss until management or a profitable settle resumes it.
 
 Governance registers Tranches in priority order with `registerTranche` or
 inserts one with `registerTrancheAt`. There is no removal path. To wind down a
@@ -79,7 +79,8 @@ Settlement does this:
 4. If losing, draws the reserve first, then applies losses junior-to-senior.
 
 Losses hit `pendingExcess` before `baselineAssets`. Any Tranche that absorbs a
-loss is frozen. A strictly profitable settle unfreezes frozen Tranches.
+loss has target accrual paused. A strictly profitable settle resumes paused
+Tranches.
 
 The reserve is optional. It must be a same-asset ERC-4626 vault when set. It is
 a settlement backstop, not a redemption source.

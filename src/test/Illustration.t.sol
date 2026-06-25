@@ -74,9 +74,9 @@ contract IllustrationTest is Setup {
         _approx(controller.liveAssets(address(bTranche)), 20_850_000_000_000_000_000, 1e15, "B NAV whole");
         _approx(controller.liveAssets(address(eTranche)), 0, 1e15, "E flat");
         _approx(controller.reserveAssets(), 9_775_000_000_000_000_000, 1e15, "reserve drained");
-        assertFalse(controller.isFrozen(address(aTranche)));
-        assertFalse(controller.isFrozen(address(bTranche)));
-        assertFalse(controller.isFrozen(address(eTranche)));
+        assertFalse(controller.isAccrualPaused(address(aTranche)));
+        assertFalse(controller.isAccrualPaused(address(bTranche)));
+        assertFalse(controller.isAccrualPaused(address(eTranche)));
     }
 
     /// @dev 2 % risky year (1.80 profit). Shortfall = 2.025 → reserve.
@@ -88,7 +88,7 @@ contract IllustrationTest is Setup {
     }
 
     /// @dev Negative year (−20 risky). Total loss vs claim = 23.825.
-    ///      Reserve absorbs 10, E absorbs 0, B absorbs 13.825 (frozen).
+    ///      Reserve absorbs 10, E absorbs 0, B absorbs 13.825 (accrual paused).
     function test_illustration_negativeYear() public {
         _depositA(alice, A_AMT);
         _depositB(bob, B_AMT);
@@ -99,8 +99,8 @@ contract IllustrationTest is Setup {
         _approx(controller.liveAssets(address(aTranche)), 72_975_000_000_000_000_000, 1e15, "A whole");
         _approx(controller.liveAssets(address(bTranche)), 7_025_000_000_000_000_000, 1e15, "B haircut");
         _approx(controller.reserveAssets(), 0, 1e15, "reserve wiped");
-        assertFalse(controller.isFrozen(address(aTranche)), "A still accruing");
-        assertTrue(controller.isFrozen(address(bTranche)), "B frozen on haircut");
+        assertFalse(controller.isAccrualPaused(address(aTranche)), "A still accruing");
+        assertTrue(controller.isAccrualPaused(address(bTranche)), "B accrual paused on haircut");
     }
 
     /// @dev Alternate split: A=0, B=7000, E=3000 on the 6 % year.

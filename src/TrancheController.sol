@@ -14,7 +14,7 @@ import {Authorized} from "./periphery/Authorized.sol";
  * @notice
  *  Economic source of truth for the Tranche system. Every Tranche shares
  *  the same `Tranche` struct — a target rate, an excess-share BPS, a
- *  baseline-assets accumulator, an accrual checkpoint, and a frozen flag.
+ *  baseline-assets accumulator, an accrual checkpoint, and an accrual pause flag.
  *  The struct is keyed by the Tranche strategy's address; the controller
  *  has no A/B/E specialised surface.
  *
@@ -45,7 +45,7 @@ contract TrancheController is Authorized {
     );
     event TrancheTargetRateSet(address indexed tranche, uint256 newRatePerSecondWad);
     event TrancheExcessShareSet(address indexed tranche, uint16 newExcessShareBps);
-    event TrancheFrozenSet(address indexed tranche, bool frozen);
+    event TrancheAccrualPausedSet(address indexed tranche, bool accrualPaused);
     event TrancheLoss(address indexed tranche, uint256 amount);
     event ReserveFunded(address indexed funder, uint256 amount);
     event ReserveSwept(address indexed receiver, uint256 amount);
@@ -59,7 +59,7 @@ contract TrancheController is Authorized {
     /**
      * @notice Configuration + live state for a single Tranche.
      * @param registered             Set to `true` when the Tranche is bound.
-     * @param frozen                 When true, target accrual is paused.
+     * @param accrualPaused          When true, target accrual is paused.
      * @param excessShareBps         BPS share of post-target excess profit.
      * @param targetRatePerSecondWad Continuous per-second target rate (WAD).
      * @param baselineAssets         Principal + realised target + realised excess.
@@ -71,7 +71,7 @@ contract TrancheController is Authorized {
      */
     struct Tranche {
         bool registered;
-        bool frozen;
+        bool accrualPaused;
         uint16 excessShareBps;
         uint256 targetRatePerSecondWad;
         uint256 baselineAssets;
@@ -198,7 +198,7 @@ contract TrancheController is Authorized {
             excessShareBps: _excessShareBps,
             baselineAssets: 0,
             lastAccrual: block.timestamp,
-            frozen: false,
+            accrualPaused: false,
             pendingExcess: 0
         });
 
@@ -252,15 +252,15 @@ contract TrancheController is Authorized {
         emit TrancheExcessShareSet(_tranche, _newBps);
     }
 
-    /// @notice Clear a Tranche's accrual-frozen flag.
-    function unfreeze(address _tranche) external isAuthorized(MANAGEMENT_ROLE) {
+    /// @notice Resume target accrual for a Tranche that previously absorbed loss.
+    function resumeAccrual(address _tranche) external isAuthorized(MANAGEMENT_ROLE) {
         Tranche storage tranche = tranches[_tranche];
         require(tranche.registered, "!tranche");
 
-        tranche.frozen = false;
+        tranche.accrualPaused = false;
         tranche.lastAccrual = block.timestamp;
 
-        emit TrancheFrozenSet(_tranche, false);
+        emit TrancheAccrualPausedSet(_tranche, false);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -307,8 +307,8 @@ contract TrancheController is Authorized {
         return tranches[_tranche].registered;
     }
 
-    function isFrozen(address _tranche) external view returns (bool) {
-        return tranches[_tranche].frozen;
+    function isAccrualPaused(address _tranche) external view returns (bool) {
+        return tranches[_tranche].accrualPaused;
     }
 
     /// @notice Live NAV for a Tranche — its NAV source. Reverts if the Tranche
@@ -466,8 +466,8 @@ contract TrancheController is Authorized {
      *
      *   1. Accrue every Tranche.
      *   2. pnl = vaultAssets() − Σ (Tranche.baselineAssets + Tranche.pendingExcess)
-     *   3. Profit path — a strictly profitable settle auto-unfreezes any
-     *      Tranche frozen by an earlier loss, then records the surplus by
+     *   3. Profit path — a strictly profitable settle resumes accrual for any
+     *      Tranche paused by an earlier loss, then records the surplus by
      *      each Tranche's `excessShareBps` as `pendingExcess`. It does NOT
      *      enter live NAV until the Tranche realises it via {realizeExcess}
      *      during its `report()`, so the strategy can lock the chunky
@@ -475,7 +475,7 @@ contract TrancheController is Authorized {
      *   4. Loss path — the reserve absorbs first, then each Tranche in
      *      REVERSE priority (junior first) absorbs from its total claim:
      *      pending excess first, then baseline. Any loss — pending or
-     *      baseline — freezes the Tranche and emits one combined
+     *      baseline — pauses accrual for the Tranche and emits one combined
      *      {TrancheLoss}. Pending excess is treated as part of the claim, so
      *      the loss order is constant regardless of unrealised excess.
      */
@@ -502,10 +502,10 @@ contract TrancheController is Authorized {
                 address trancheAddress = tranchesByPriority[i];
                 Tranche storage tranche = tranches[trancheAddress];
 
-                // Resume accrual for any Tranche frozen by an earlier loss.
-                if (tranche.frozen) {
-                    tranche.frozen = false;
-                    emit TrancheFrozenSet(trancheAddress, false);
+                // Resume accrual for any Tranche paused by an earlier loss.
+                if (tranche.accrualPaused) {
+                    tranche.accrualPaused = false;
+                    emit TrancheAccrualPausedSet(trancheAddress, false);
                 }
 
                 // Record this Tranche's slice of the excess as pending.
@@ -531,7 +531,7 @@ contract TrancheController is Authorized {
 
             // 4b. Then Tranches in REVERSE priority (junior first). Each Tranche
             //     absorbs from its total claim, pending excess first, then baseline.
-            //     Any loss to the Tranche (pending and/or baseline) freezes its baseline accrual
+            //     Any loss to the Tranche (pending and/or baseline) pauses target accrual.
             for (uint256 i = numberOfTranches; i > 0; --i) {
                 if (loss == 0) break;
 
@@ -550,12 +550,12 @@ contract TrancheController is Authorized {
                     loss -= fromBaseline;
                 }
 
-                // Any loss to the Tranche (pending and/or baseline) freezes it
+                // Any loss to the Tranche (pending and/or baseline) pauses target accrual.
                 uint256 absorbed = fromPending + fromBaseline;
                 if (absorbed > 0) {
-                    if (!tranche.frozen) {
-                        tranche.frozen = true;
-                        emit TrancheFrozenSet(trancheAddress, true);
+                    if (!tranche.accrualPaused) {
+                        tranche.accrualPaused = true;
+                        emit TrancheAccrualPausedSet(trancheAddress, true);
                     }
                     emit TrancheLoss(trancheAddress, absorbed);
                 }
@@ -594,7 +594,7 @@ contract TrancheController is Authorized {
 
     /// @dev View-only live NAV for `_tranche` (no state change).
     function _liveAssetsView(Tranche memory _tranche) internal view returns (uint256) {
-        if (_tranche.frozen) return _tranche.baselineAssets;
+        if (_tranche.accrualPaused) return _tranche.baselineAssets;
         uint256 dt = block.timestamp - _tranche.lastAccrual;
         if (dt == 0) return _tranche.baselineAssets;
         return _tranche.baselineAssets + (_tranche.baselineAssets * _tranche.targetRatePerSecondWad * dt) / WAD;

@@ -83,9 +83,9 @@ contract TrancheRegistryTest is Setup {
         assertEq(controller.liveAssets(address(bTranche)), 0, "B wiped first");
         assertEq(controller.liveAssets(address(c)), 0, "C wiped after B");
         assertApproxEqAbs(controller.liveAssets(address(aTranche)), 65e18, 1e15, "A haircut by the remainder");
-        assertTrue(controller.isFrozen(address(bTranche)));
-        assertTrue(controller.isFrozen(address(c)));
-        assertTrue(controller.isFrozen(address(aTranche)));
+        assertTrue(controller.isAccrualPaused(address(bTranche)));
+        assertTrue(controller.isAccrualPaused(address(c)));
+        assertTrue(controller.isAccrualPaused(address(aTranche)));
     }
 
     /// @dev Deprecate a Tranche by zeroing its target + excess: it stops earning

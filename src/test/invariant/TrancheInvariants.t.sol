@@ -167,20 +167,20 @@ contract TrancheInvariants is Setup {
     }
 
     // NOTE: plan invariant #9 (junior-first loss ordering) is intentionally NOT a
-    // stateful invariant. "Frozen tranches form a junior suffix" is only true at the
+    // stateful invariant. "Accrual-paused tranches form a junior suffix" is only true at the
     // moment loss is applied: a junior tranche that was empty during a loss does not
-    // freeze, and a deposit into it afterward leaves a frozen senior above an
-    // unfrozen junior-with-baseline — a legitimate state, not a bug (the fuzzer found
+    // pause accrual, and a deposit into it afterward leaves an accrual-paused senior above an
+    // accrual-resumed junior-with-baseline — a legitimate state, not a bug (the fuzzer found
     // exactly this). Junior-first ordering is verified at the application moment by
     // testFuzz_lossAbsorptionJuniorFirst and the loss-ordering scenario tests.
 
-    /// #10 — a frozen tranche does not accrue: its live value equals its baseline.
-    function invariant_frozenTrancheDoesNotAccrue() public view {
+    /// #10 — an accrual-paused tranche does not accrue: its live value equals its baseline.
+    function invariant_accrualPausedTrancheDoesNotAccrue() public view {
         address[] memory t = controller.getTranchesByPriority();
         for (uint256 i; i < t.length; ++i) {
-            if (!controller.isFrozen(t[i])) continue;
+            if (!controller.isAccrualPaused(t[i])) continue;
             (,,,, uint256 baseline,,) = controller.tranches(t[i]);
-            assertEq(controller.liveAssets(t[i]), baseline, "frozen tranche accrued");
+            assertEq(controller.liveAssets(t[i]), baseline, "accrual-paused tranche accrued");
         }
     }
 

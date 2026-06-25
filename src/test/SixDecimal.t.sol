@@ -56,8 +56,8 @@ contract SixDecimalTest is Setup {
         _settle();
 
         assertApproxEqAbs(controller.liveAssets(address(aTranche)), 70 * UNIT, 2, "senior untouched");
-        assertFalse(controller.isFrozen(address(aTranche)), "A not frozen");
-        assertTrue(controller.isFrozen(address(eTranche)), "E absorbed/frozen");
-        assertTrue(controller.isFrozen(address(bTranche)), "B absorbed/frozen");
+        assertFalse(controller.isAccrualPaused(address(aTranche)), "A accrual not paused");
+        assertTrue(controller.isAccrualPaused(address(eTranche)), "E absorbed/accrual paused");
+        assertTrue(controller.isAccrualPaused(address(bTranche)), "B absorbed/accrual paused");
     }
 }
