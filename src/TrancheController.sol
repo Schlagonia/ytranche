@@ -49,6 +49,7 @@ contract TrancheController is Authorized {
     event TrancheLoss(address indexed tranche, uint256 amount);
     event ReserveFunded(address indexed funder, uint256 amount);
     event ReserveSwept(address indexed receiver, uint256 amount);
+    event TokenSwept(address indexed token, address indexed receiver, uint256 amount);
     event Settled(int256 pnl);
     event ExcessRealized(address indexed tranche, uint256 amount);
 
@@ -139,11 +140,10 @@ contract TrancheController is Authorized {
      *         reserve vault is set afterwards via {setReserveVault}.
      */
     constructor(address _asset, address _mainVault, address _authorizer) Authorized(_authorizer) {
-        require(_asset != address(0), "ZERO asset");
-        require(_mainVault != address(0), "ZERO mainVault");
-
         ASSET = IERC20(_asset);
         VAULT = IVault(_mainVault);
+
+        require(VAULT.asset() == _asset, "asset mismatch");
 
         // Approve the main vault once — deposits and reserve draws never
         // need to re-approve per call.
@@ -190,6 +190,7 @@ contract TrancheController is Authorized {
         require(!tranches[_tranche].registered, "already registered");
         require(_index <= tranchesByPriority.length, "bad index");
         require(_excessShareBps + _totalExcessShareBpsExcluding(_tranche) <= MAX_BPS, "excess > MAX_BPS");
+        require(_targetBps < MAX_BPS, "target > MAX_BPS");
 
         uint256 ratePerSecondWad = _bpsToPerSecondWad(_targetBps);
         tranches[_tranche] = Tranche({
@@ -232,6 +233,7 @@ contract TrancheController is Authorized {
     /// @notice Set a Tranche's annualised target rate in basis points.
     /// @dev Accrues against the old rate first.
     function setTrancheTargetBps(address _tranche, uint16 _newBps) external isAuthorized(GOVERNANCE_ROLE) {
+        require(_newBps < MAX_BPS, "target > MAX_BPS");
         Tranche storage tranche = tranches[_tranche];
         require(tranche.registered, "!tranche");
 
@@ -256,6 +258,7 @@ contract TrancheController is Authorized {
     function resumeAccrual(address _tranche) external isAuthorized(MANAGEMENT_ROLE) {
         Tranche storage tranche = tranches[_tranche];
         require(tranche.registered, "!tranche");
+        require(tranche.accrualPaused, "!paused");
 
         tranche.accrualPaused = false;
         tranche.lastAccrual = block.timestamp;
@@ -286,6 +289,16 @@ contract TrancheController is Authorized {
         IERC20(address(reserveVault)).safeTransfer(_receiver, _shares);
 
         emit ReserveSwept(_receiver, _shares);
+    }
+
+    /// @notice Sweep stray ERC20 tokens. Main vault shares are protected because
+    ///         they are Tranche backing, not recoverable dust.
+    function sweep(address _token, uint256 _amount, address _receiver) external isAuthorized(GOVERNANCE_ROLE) {
+        require(_token != address(VAULT), "protected token");
+        require(_token != address(0) && _amount > 0 && _receiver != address(0), "bad arg");
+        IERC20(_token).safeTransfer(_receiver, _amount);
+
+        emit TokenSwept(_token, _receiver, _amount);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -331,6 +344,8 @@ contract TrancheController is Authorized {
     }
 
     /// @notice Maximum amount the controller can currently pull out of the vault.
+    /// @dev We use maxRedeem to match how actual withdraws are done. To allow lossy
+    ///      values to flow through.
     function vaultMaxWithdraw() external view returns (uint256) {
         return VAULT.convertToAssets(VAULT.maxRedeem(address(this)));
     }
@@ -402,13 +417,11 @@ contract TrancheController is Authorized {
     }
 
     /**
-     * @notice Source `_amount` underlying for the calling Tranche from the main
-     *         vault. The full claim (`_amount`) is debited from the baseline,
-     *         but only the assets the vault actually delivers are handed back —
-     *         so a redemption that realises a vault loss passes that loss
-     *         through to the withdrawing Tranche/user (booked against them by
-     *         the TokenizedStrategy per the redeemer's `maxLoss`). The reserve
-     *         is a settlement-time backstop only, never a redemption source.
+     * @notice Withdraws, `_amount` from the main vault to send back to
+     *         the calling Tranche.
+     * @dev The full claim (`_amount`) is debited from the baseline, but
+     *      only realized withdrawals are handed back. The Tranche's own
+     *      max_loss should limit the realizable loss.
      */
     function withdrawFromTranche(uint256 _amount) external onlyTranche {
         if (_amount == 0) return;

@@ -159,6 +159,40 @@ contract TrancheBasicTest is Setup {
         assertEq(controller.reserveAssets(), 0, "new reserve starts empty");
     }
 
+    function test_sweep_governanceCanRecoverStrayToken() public {
+        _airdrop(address(controller), 5e18);
+
+        vm.prank(governance);
+        controller.sweep(address(asset), 3e18, treasury);
+
+        assertEq(asset.balanceOf(treasury), 3e18, "treasury received stray token");
+        assertEq(asset.balanceOf(address(controller)), 2e18, "remainder stayed");
+    }
+
+    function test_sweep_rejectsNonGovernance() public {
+        _airdrop(address(controller), 1e18);
+
+        vm.prank(management);
+        vm.expectRevert(bytes("!authorized"));
+        controller.sweep(address(asset), 1e18, treasury);
+    }
+
+    function test_sweep_protectsMainVaultToken() public {
+        _airdrop(alice, 1e18);
+        vm.startPrank(alice);
+        asset.approve(address(mainVault), 1e18);
+        mainVault.deposit(1e18, address(controller));
+        vm.stopPrank();
+
+        uint256 shares = mainVault.balanceOf(address(controller));
+
+        vm.prank(governance);
+        vm.expectRevert(bytes("protected token"));
+        controller.sweep(address(mainVault), shares, treasury);
+
+        assertEq(mainVault.balanceOf(address(controller)), shares, "vault shares stayed protected");
+    }
+
     /// @dev The reserve vault can be cleared to address(0); reserve then
     ///      contributes 0 and flows still work.
     function test_reserveVault_clearToZero() public {
