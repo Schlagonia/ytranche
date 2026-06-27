@@ -84,6 +84,20 @@ contract CooldownTest is Setup {
         ITrancheStrategy(address(bTranche)).redeem(20e18, alice, alice);
     }
 
+    function test_expiredCooldown_doesNotLockTransfers() public {
+        uint256 shares = _depositB(alice, 20e18);
+        _start(alice, shares);
+
+        skip(14 days + 7 days + 1);
+
+        assertEq(bTranche.availableWithdrawLimit(alice), 0, "expired cooldown cannot redeem");
+
+        vm.prank(alice);
+        ITrancheStrategy(address(bTranche)).transfer(bob, shares);
+
+        assertEq(ITrancheStrategy(address(bTranche)).balanceOf(bob), shares, "expired cooldown no longer locks");
+    }
+
     function test_cooldown_checkpoint_advancesBaseline() public {
         _depositB(alice, 20e18);
         skip(100 days);

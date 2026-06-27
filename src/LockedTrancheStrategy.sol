@@ -225,6 +225,10 @@ contract LockedTrancheStrategy is TrancheStrategy {
             return;
         }
 
+        if (block.timestamp > cooldown.windowEnd) {
+            return;
+        }
+
         uint256 userBalance = TokenizedStrategy.balanceOf(_from);
         uint256 nonCooldownShares = userBalance > cooldown.shares ? userBalance - cooldown.shares : 0;
 
