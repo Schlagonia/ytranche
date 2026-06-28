@@ -32,5 +32,8 @@ jobs:
 
       - name: Run Forge tests
         run: |
-          forge test -vvv --fork-url ${{ secrets.ETH_RPC_URL }}
+          test -n "$ETH_RPC_URL" || { echo "ETH_RPC_URL secret is not set"; exit 1; }
+          forge test -vvv --fork-url "$ETH_RPC_URL"
+        env:
+          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
         id: test

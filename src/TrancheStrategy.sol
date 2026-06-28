@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {BaseHooks, BaseHealthCheck} from "@periphery/Bases/Hooks/BaseHooks.sol";
+import {TokenizedStrategyLib as TokenizedStrategy} from "@tokenized-strategy/libraries/TokenizedStrategyLib.sol";
 
 import {ITrancheController} from "./interfaces/ITrancheController.sol";
 import {IHook} from "./interfaces/IHook.sol";
@@ -74,6 +75,9 @@ contract TrancheStrategy is BaseHooks, Authorized {
         CONTROLLER = ITrancheController(_controller);
         hook = IHook(_hook);
         _symbol = _trancheSymbol;
+
+        // Avoid the management setter: it accrues and hits controller.liveAssets before registration.
+        TokenizedStrategy.strategyStorage().performanceFee = 0;
 
         // Pre-approve the controller to pull underlying during `_deployFunds`.
         IERC20(_asset).forceApprove(_controller, type(uint256).max);

@@ -32,7 +32,9 @@ jobs:
         run: sudo apt-get -y install lcov
 
       - name: Run generate html report
-        run: make coverage-html
+        run: |
+          test -n "$ETH_RPC_URL" || { echo "ETH_RPC_URL secret is not set"; exit 1; }
+          make coverage-html
 
       - name: Generate summary report
         run: |

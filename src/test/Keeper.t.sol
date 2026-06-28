@@ -97,7 +97,6 @@ contract KeeperTest is Setup {
 
         // This test contract is `d`'s strategy-management (it deployed it).
         d.setProfitMaxUnlockTime(0);
-        d.setPerformanceFee(0);
         d.setKeeper(address(batchKeeper));
         d.setOpen(true);
         d.setProfitLimitRatio(type(uint16).max);

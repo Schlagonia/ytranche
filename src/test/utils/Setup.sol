@@ -79,7 +79,6 @@ contract Setup is Test {
 
         riskyStrategy = new MockStrategy(address(asset));
         IStrategy(address(riskyStrategy)).setProfitMaxUnlockTime(0);
-        IStrategy(address(riskyStrategy)).setPerformanceFee(0);
         IStrategy(address(riskyStrategy)).setKeeper(keeper);
 
         mainVault.add_strategy(address(riskyStrategy));
@@ -188,14 +187,13 @@ contract Setup is Test {
         vm.stopPrank();
     }
 
-    /// @dev Tranche-side setup (this contract is management): unlock time, fees,
+    /// @dev Tranche-side setup (this contract is management): unlock time,
     ///      keeper, open its deposit gate, and widen the {BaseHealthCheck} report
     ///      limits so the economic tests can record arbitrary profit / loss.
     ///      Must run after the Tranche is registered (setters trigger accrual).
     function _configureTranche(address _tranche) internal {
         ITrancheStrategy t = ITrancheStrategy(_tranche);
         t.setProfitMaxUnlockTime(0);
-        t.setPerformanceFee(0);
         t.setKeeper(keeper);
         t.setEmergencyAdmin(address(emergencyAdmin));
         t.setOpen(true);

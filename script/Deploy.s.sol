@@ -198,7 +198,6 @@ contract DeployTrancheSystem is Script {
     function _configureTranche(address tranche, address keeper, address emergencyAdmin) internal {
         IStrategy s = IStrategy(tranche);
         s.setProfitMaxUnlockTime(2 days);
-        s.setPerformanceFee(0);
         s.setKeeper(keeper);
         s.setEmergencyAdmin(emergencyAdmin);
 

@@ -26,30 +26,20 @@ contract TrancheFactory {
         uint256 withdrawalWindow
     );
 
-    address public immutable EMERGENCY_ADMIN;
     address public immutable AUTHORIZER;
 
     address public management;
-    address public performanceFeeRecipient;
+    address public emergencyAdmin;
     address public keeper;
 
     mapping(address => bool) public isDeployedTranche;
     mapping(address => bool) public isDeployedLockedTranche;
 
-    constructor(
-        address _management,
-        address _performanceFeeRecipient,
-        address _keeper,
-        address _emergencyAdmin,
-        address _authorizer
-    ) {
-        require(
-            _management != address(0) && _performanceFeeRecipient != address(0) && _authorizer != address(0), "ZERO"
-        );
+    constructor(address _management, address _keeper, address _emergencyAdmin, address _authorizer) {
+        require(_management != address(0) && _emergencyAdmin != address(0) && _authorizer != address(0), "ZERO");
         management = _management;
-        performanceFeeRecipient = _performanceFeeRecipient;
+        emergencyAdmin = _emergencyAdmin;
         keeper = _keeper;
-        EMERGENCY_ADMIN = _emergencyAdmin;
         AUTHORIZER = _authorizer;
     }
 
@@ -97,17 +87,17 @@ contract TrancheFactory {
         return address(tranche);
     }
 
-    function setAddresses(address _management, address _performanceFeeRecipient, address _keeper) external {
+    function setAddresses(address _management, address _keeper, address _emergencyAdmin) external {
         require(msg.sender == management, "!management");
-        require(_management != address(0) && _performanceFeeRecipient != address(0), "ZERO");
+        require(_management != address(0) && _emergencyAdmin != address(0), "ZERO");
         management = _management;
-        performanceFeeRecipient = _performanceFeeRecipient;
         keeper = _keeper;
+        emergencyAdmin = _emergencyAdmin;
     }
 
     function _configureStrategy(ITrancheStrategy _strategy) internal {
         _strategy.setKeeper(keeper);
-        _strategy.setEmergencyAdmin(EMERGENCY_ADMIN);
+        _strategy.setEmergencyAdmin(emergencyAdmin);
         _strategy.setPendingManagement(management);
     }
 }

@@ -35,7 +35,7 @@ contract TrancheFactoryTest is Setup {
     function setUp() public override {
         super.setUp();
 
-        trancheFactory = new TrancheFactory(management, treasury, keeper, address(emergencyAdmin), address(authorizer));
+        trancheFactory = new TrancheFactory(management, keeper, address(emergencyAdmin), address(authorizer));
     }
 
     function test_setHookIsGovernanceGated() public {
@@ -68,13 +68,13 @@ contract TrancheFactoryTest is Setup {
         );
         ITrancheStrategy tranche = ITrancheStrategy(deployed);
 
-        assertEq(trancheFactory.performanceFeeRecipient(), treasury, "factory fee recipient");
         assertEq(tranche.asset(), address(asset), "asset");
         assertEq(tranche.symbol(), "FT", "symbol");
         assertEq(tranche.hook(), address(hook), "hook");
         assertEq(tranche.keeper(), keeper, "keeper");
         assertEq(tranche.emergencyAdmin(), address(emergencyAdmin), "emergency admin");
         assertEq(tranche.pendingManagement(), management, "pending management");
+        assertEq(tranche.performanceFee(), 0, "performance fee");
         assertTrue(trancheFactory.isDeployedTranche(deployed), "tracked deployment");
 
         vm.prank(management);
@@ -88,7 +88,6 @@ contract TrancheFactoryTest is Setup {
         );
         ILockedTrancheStrategy tranche = ILockedTrancheStrategy(deployed);
 
-        assertEq(trancheFactory.performanceFeeRecipient(), treasury, "factory fee recipient");
         assertEq(tranche.asset(), address(asset), "asset");
         assertEq(tranche.symbol(), "FLT", "symbol");
         assertEq(tranche.hook(), address(hook), "hook");
@@ -97,6 +96,7 @@ contract TrancheFactoryTest is Setup {
         assertEq(tranche.keeper(), keeper, "keeper");
         assertEq(tranche.emergencyAdmin(), address(emergencyAdmin), "emergency admin");
         assertEq(tranche.pendingManagement(), management, "pending management");
+        assertEq(tranche.performanceFee(), 0, "performance fee");
         assertTrue(trancheFactory.isDeployedLockedTranche(deployed), "tracked deployment");
 
         vm.prank(management);
@@ -107,13 +107,13 @@ contract TrancheFactoryTest is Setup {
     function test_factoryAddressUpdatesAreManagementGated() public {
         vm.prank(alice);
         vm.expectRevert(bytes("!management"));
-        trancheFactory.setAddresses(alice, bob, carol);
+        trancheFactory.setAddresses(alice, carol, bob);
 
         vm.prank(management);
-        trancheFactory.setAddresses(alice, bob, carol);
+        trancheFactory.setAddresses(alice, carol, bob);
         assertEq(trancheFactory.management(), alice, "management");
-        assertEq(trancheFactory.performanceFeeRecipient(), bob, "fee recipient");
         assertEq(trancheFactory.keeper(), carol, "keeper");
+        assertEq(trancheFactory.emergencyAdmin(), bob, "emergency admin");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -144,7 +144,6 @@ contract TrancheFactoryTest is Setup {
         // 3. open + configure (gated by the strategy's management)
         vm.startPrank(management);
         t.setProfitMaxUnlockTime(0);
-        t.setPerformanceFee(0);
         t.setKeeper(keeper);
         t.setOpen(true);
         t.setProfitLimitRatio(type(uint16).max);
@@ -197,34 +196,33 @@ contract TrancheFactoryTest is Setup {
         address s1 = trancheFactory.newTrancheStrategy(address(asset), "S1", "S1", address(controller), address(hook));
 
         vm.prank(management);
-        trancheFactory.setAddresses(alice, bob, carol); // management -> alice, keeper -> carol
+        trancheFactory.setAddresses(alice, carol, bob); // management -> alice, keeper -> carol, emergency -> bob
 
         address s2 = trancheFactory.newTrancheStrategy(address(asset), "S2", "S2", address(controller), address(hook));
 
-        // S1 keeps the old keeper / pending-management; S2 picks up the new ones.
+        // S1 keeps the old config; S2 picks up the new config.
         assertEq(ITrancheStrategy(s1).keeper(), keeper, "S1 old keeper");
+        assertEq(ITrancheStrategy(s1).emergencyAdmin(), address(emergencyAdmin), "S1 old emergency admin");
         assertEq(ITrancheStrategy(s1).pendingManagement(), management, "S1 old pending mgmt");
         assertEq(ITrancheStrategy(s2).keeper(), carol, "S2 new keeper");
+        assertEq(ITrancheStrategy(s2).emergencyAdmin(), bob, "S2 new emergency admin");
         assertEq(ITrancheStrategy(s2).pendingManagement(), alice, "S2 new pending mgmt");
 
         // Old management can no longer call setAddresses.
         vm.prank(management);
         vm.expectRevert(bytes("!management"));
-        trancheFactory.setAddresses(management, treasury, keeper);
+        trancheFactory.setAddresses(management, keeper, address(emergencyAdmin));
     }
 
-    /// §6.4 — KNOWN GAP: the factory stores performanceFeeRecipient but never applies
-    /// it to deployed strategies (`_configureStrategy` does not call
-    /// setPerformanceFeeRecipient). This locks the CURRENT behavior; if the intended
-    /// behavior is to propagate it, change the factory and flip this assertion.
-    function test_factory_performanceFeeRecipientNotApplied() public {
-        address deployed =
-            trancheFactory.newTrancheStrategy(address(asset), "FF", "FF", address(controller), address(hook));
-        assertEq(trancheFactory.performanceFeeRecipient(), treasury, "factory stores it");
-        assertTrue(
-            IStrategy(deployed).performanceFeeRecipient() != treasury,
-            "GAP: factory fee recipient not propagated to strategy"
+    /// §6.4 — factory deployments inherit the tranche constructor's zero performance fee.
+    function test_factory_performanceFeeDefaultsToZero() public {
+        address atomic =
+            trancheFactory.newTrancheStrategy(address(asset), "FA", "FA", address(controller), address(hook));
+        address locked = trancheFactory.newLockedTrancheStrategy(
+            address(asset), "FL", "FL", address(controller), address(hook), 14 days, 7 days
         );
+        assertEq(ITrancheStrategy(atomic).performanceFee(), 0, "atomic fee");
+        assertEq(ITrancheStrategy(locked).performanceFee(), 0, "locked fee");
     }
 
     /// §6.6 — deployment tracking mappings are set per type (and not the other).
